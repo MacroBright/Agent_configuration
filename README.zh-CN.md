@@ -1,56 +1,155 @@
 # agent-config
 
-个人 Agent 配置仓库，跨机器、跨 Agent（Codex、Claude Code、OpenCode、Antigravity）统一复用。
+> 跨 CLI Agent 与 IDE（Codex、Claude Code、OpenCode、Antigravity）的统一版本化配置与工程规则系统。
 
-本仓库不把配置塞进一份巨大的 `AGENTS.md`，而是把规则、用户上下文、每个 Agent 的适配分开存放。换新机器或换 Agent 时，一次 `clone` 加 `./install.sh` 即可恢复。
+<p align="left">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-## 仓库内容
+---
 
-- `global/AGENTS.md` — 跨 Agent 共享的规则层
-- `global/USER_CONTEXT.md.template` — 稳定的用户画像模板，安装时填写
-- `global/templates/project-AGENTS.md` — 通用新项目规则文件起点
-- `global/templates/robotics-AGENTS.md` — 机器人与具身智能项目专用规则（CAN/ROS2/LeRobot/昇腾/物理安全）
-- `per-agent/*.template` — 各工具配置模板，机器相关的值用占位符
-- `per-agent/claude.mcp.json.template` — Claude Code MCP 基线（github/obsidian/arxiv/huggingface；刻意排除过时的 `memory` 与 `sequential-thinking`）
-- `skills/manifest.yaml` 与 `skills/curated.txt` — skill 来源清单与激活白名单（不打包第三方内容）
-- `install.sh` / `verify.sh` — 环境引导与复检脚本
+## 项目概述
 
-## 快速开始
+`agent-config` 为多 Agent 开发环境提供分层解耦、可复现的统一配置基础设施。针对多机器、多 Agent 场景下配置文件碎片化、规则冲突、密钥难管理等问题，本仓库采用四层解耦设计：
 
-新机器上：
+1. **全局规则层** (`global/AGENTS.md`)：定义跨 Agent 通用的工程原则、非协商条款、任务执行模式与安全红线。
+2. **用户画像层** (`global/USER_CONTEXT.md.template`)：定义长期技术方向、工程偏好与协作风格，独立于具体项目生命周期。
+3. **领域模板层** (`global/templates/`)：提供通用软件工程与机器人/具身智能专用领域的项目级规则起点。
+4. **工具适配层** (`per-agent/`)：按 Agent 分离配置模板与 MCP 服务，无硬编码路径与密钥。
+
+```
+                  +-----------------------------------+
+                  |        global/AGENTS.md           |  <-- 跨 Agent 通用规则与非协商条款
+                  +-----------------------------------+
+                                    |
+                  +-----------------------------------+
+                  |      ~/.codex/USER_CONTEXT.md     |  <-- 用户长期技术画像与工作风格
+                  +-----------------------------------+
+                                    |
+       +----------------------------+----------------------------+
+       |                                                         |
+       v                                                         v
++-----------------------------+           +---------------------------------------------+
+| global/templates/           |           | per-agent/                                  |
+| ├── project-AGENTS.md       |           | ├── codex.config.toml.template              |
+| └── robotics-AGENTS.md      |           | ├── claude.settings.json.template           |
+|     (CAN/ROS2/LeRobot)      |           | ├── claude.mcp.json.template                |
++-----------------------------+           | ├── opencode.jsonc.template                 |
+                                          | └── antigravity.mcp_config.json.template    |
+                                          +---------------------------------------------+
+```
+
+---
+
+## Agent 支持矩阵
+
+| Agent | 目标配置路径 | 部署方式 | 核心特性 |
+| :--- | :--- | :--- | :--- |
+| **Codex** | `~/.codex/config.toml` | 原生配置 + 本地 `auth.json` | 自定义 Provider、推理深度控制、桌面端插件段 |
+| **Claude Code** | `~/.claude/settings.json`<br>`~/.claude/mcp.json` | 增量合并 + 软链 `CLAUDE.md` | 非破坏性 JSON 合并、硬件安全黑名单 (`deny`/`ask`)、MCP 基线 |
+| **OpenCode** | `~/.config/opencode/opencode.jsonc` | 原生配置 | CANN 昇腾工具链插件、远程 RAG 检索 MCP 集成 |
+| **Antigravity** | `~/.gemini/config/GEMINI.md`<br>`~/.gemini/config/mcp_config.json` | 规则分发 + MCP 基线 | 7 大核心 MCP 服务、`skills.json` 双目录发现机制 |
+
+---
+
+## 目录结构
+
+```text
+.
+├── global/
+│   ├── AGENTS.md                  # 跨 Agent 共享的全局规则层
+│   ├── USER_CONTEXT.md.template   # 长期用户画像与工程风格模板
+│   └── templates/
+│       ├── project-AGENTS.md      # 通用新项目规则起点
+│       └── robotics-AGENTS.md     # 机器人/具身智能项目专用规则（CAN/ROS2/LeRobot/硬件安全）
+├── per-agent/
+│   ├── codex.config.toml.template
+│   ├── claude.settings.json.template
+│   ├── claude.mcp.json.template
+│   ├── opencode.jsonc.template
+│   └── antigravity.mcp_config.json.template
+├── skills/
+│   ├── manifest.yaml              # 第三方 Skill 来源声明清单
+│   └── curated.txt                # 98 个活跃、已校验的 Skill 白名单
+├── install.sh                     # 交互式一键安装与引导脚本
+├── verify.sh                      # 推前密钥扫描与系统完整性校验脚本
+├── LICENSE                        # MIT 许可证
+├── README.md                      # 英文文档
+└── README.zh-CN.md                # 中文文档
+```
+
+---
+
+## 快速上手
+
+### 1. 安装与初始化
+
+在新环境或需要同步配置的机器上：
 
 ```bash
-git clone <本仓库> ~/agent-config
+git clone https://github.com/MacroBright/Agent_configuration.git ~/agent-config
 cd ~/agent-config
 ./install.sh
+```
+
+`install.sh` 脚本执行流程：
+- 自动检测本机已安装的 Agent 环境（`Codex`、`Claude Code`、`OpenCode`、`Antigravity`）。
+- 在修改任何现有配置前，自动建立带时间戳的备份文件（`*.bak-YYYYMMDD`）。
+- 交互式获取必要环境参数（模型名、Base URL、API Key、本地知识库路径等）。
+- **针对 Claude Code**：采用增量合并策略——保留用户既有环境变量与插件，合并 `deny`/`ask` 安全权限规则，仅补充缺失的 MCP 服务，绝不覆盖或删除既有条目。
+- **针对 Antigravity**：自动配置 7 大核心 MCP 服务，写入 `skills.json` 双重技能检索路径。
+- 密钥统一写入本地 `~/.codex/auth.json`（权限严格锁定为 `chmod 600`），绝不进入 Git 跟踪。
+
+### 2. 状态校验
+
+在完成配置修改或执行 `git push` 前，运行复检脚本：
+
+```bash
 ./verify.sh
 ```
 
-`install.sh` 是交互式的。它会先检测本机装了哪些 Agent（Codex / Claude Code / OpenCode / Antigravity），备份已有配置，然后询问模型、Base URL、API Key 以及项目相关路径，最后把文件写入 `$HOME`。对 Claude Code 采用**合并而非覆盖**：既有的 `env`、插件、市场保留不动，`deny`/`ask` 权限规则取并集，MCP 只补缺失的 server、绝不删除既有条目。密钥写入 `~/.codex/auth.json`（chmod 600），绝不会进入本仓库。
+该脚本将自动执行以下检查：
+- **密钥扫描**：全仓库扫描高熵密钥、Token 及私钥模式（要求 0 命中）。
+- **仓库完整性**：校验所有必须的规则、模板与脚本文件。
+- **Agent 安装正确性**：校验 `AGENTS.md` 位置、Claude JSON 语法合法性、`permissions.deny` 规则数及 Antigravity 配置状态。
+- **技能可发现性**：校验 `curated.txt` 中 98 个白名单技能在激活区是否均具备合法的 `SKILL.md`。
 
-`verify.sh` 会扫描仓库是否有泄露的密钥，并确认安装后的文件、软链接、skill 是否都在 Agent 预期位置；同时检查 Claude 侧：`settings.json` JSON 合法性、`permissions.deny` 非空、插件/市场数量、`CLAUDE.md` 存在性，并对过时 MCP server 给出提示。
+---
 
-## 本仓库遵守的规则
+## 领域专用模板
 
-- 仓库内不存放密钥，密钥由 `install.sh` 写入本地、位于仓库之外。
-- 不硬编码机器相关路径，任何因机器而异的值都用 `{{占位符}}` 表示，安装时替换。
-- 不 vendored 第三方 skill，只在 `skills/manifest.yaml` 记录其来源。
-- `USER_CONTEXT.md` 只记录长期方向与偏好，不写成履历，也不写当前项目细节。
+### 通用项目模板 (`global/templates/project-AGENTS.md`)
+适用于通用软件工程项目。定义项目目标、技术栈、构建/测试命令、代码格式化策略与验证标准。
 
-## 新增一种 Agent
+### 机器人与具身智能模板 (`global/templates/robotics-AGENTS.md`)
+针对物理执行机构与嵌入式控制系统制定的高可靠性工程规范：
+- **五层架构解耦**：硬件总线 $\rightarrow$ 驱动层 $\rightarrow$ 控制与安全层 $\rightarrow$ ROS2 中间件 $\rightarrow$ 策略/AI 层，严禁上层直接跨层发送底层总线帧。
+- **确定性实时性与 CAN 规范**：高频控制循环（>100Hz）内部**绝对禁止动态内存分配**（`malloc`、`new`、`vector::resize`）；CAN 报文强制校验 ID/DLC/CRC 并显式指定大小端；50ms 通信超时必须触发看门狗切断力矩。
+- **运动学与动力学标准**：全链路强制 SI 国际单位制（弧度制）；位置/速度/电流指令必须经过饱和硬截断；逆解接近奇异点强制启用阻尼最小二乘（DLS）或零空间投影。
+- **昇腾 LeRobot 异步推理**：神经网络推理必须运行于独立异步线程，与底层实时控制解耦；动作块（Action Chunks）应用平滑滤波；设置确定性安全包络拦截层。
+- **五步物理安全梯级**：任何涉及物理硬件的操作严格执行：虚拟 CAN (`vcan0`) $\rightarrow$ 闭环仿真 $\rightarrow$ 断电空跑 $\rightarrow$ 低速单关节 $\rightarrow$ 人工显式批准。
 
-1. 新增模板，如 `per-agent/<agent>.template`，机器相关的值写成 `{{占位符}}`。
-2. 在 `install.sh` 加一段：备份 → 渲染模板 → 写入该 Agent 配置目录。
-3. 若需要更多 skill，在 `manifest.yaml` 加来源、在 `curated.txt` 加白名单。
+---
 
-## skill 组织方式
+## 技能管理策略
 
-`skills/` 保持为清单而不是知识库。目标是少量、描述清晰、按功能角色分组的 skill（学习、研究、调试、编码、架构、性能），而不是一堆按领域堆叠的文件（如 `ascend.md`、`cpp.md`）。领域知识由项目或专门的 skill 按需加载。激活区的 skill 目录保持扁平，这样 Codex 才能扫描 `~/.agents/skills/*/`。
+本仓库采用“声明式清单 + 扁平激活区”的模式管理技能：
+- `skills/manifest.yaml`：声明第三方技能源（Superpowers、Everything Claude Code、Anthropic 官方插件、Matt Pocock 工程方法论、ForgeMind 机器人规范）。
+- `skills/curated.txt`：维护 98 个高阶工程技能白名单。第三方技能源码不打包进仓库，避免版本污染。
+- 激活区（`~/.agents/skills/`）保持单层扁平目录结构，确保 Codex、Claude Code 与 Antigravity 均能原生索引与动态调度。
 
-## 安全性
+---
 
-`.gitignore` 已排除 `auth.json`、备份文件与真实配置文件。每次 push 前运行 `./verify.sh` 做最终的密钥检查。
+## 安全设计原则
+
+1. **零密钥入库**：仓库内禁止存储任何真实 API Key、Token 或证书。
+2. **路径抽象**：机器相关路径统一使用 `{{占位符}}`，仅在安装时本地渲染。
+3. **物理与系统级防护**：预置高危指令拦截规则，硬阻断未经确认的系统级破坏命令（`rm -rf *`、`dd`、`mkfs`）与底层硬件直接烧录（`openocd`、`jlink`、`dfu-util`）。
+4. **自动化审计门禁**：通过 `verify.sh` 实行推前强制扫描，确保代码库干净、安全。
+
+---
 
 ## 许可证
 
-本仓库内容按 MIT 授权。引用的市场和 skill（obra/superpowers、everything-claude-code、claude-plugins-official、claude-mem）均为第三方，遵守其各自许可证。
+本项目内容基于 MIT 许可证开源。引用的第三方 Skill 库与插件遵循其各自的开源许可证。
