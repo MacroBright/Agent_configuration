@@ -1,0 +1,30 @@
+# Codex 配置模板 —— 安装时由 install.sh 用本地值渲染，写入 ~/.codex/config.toml
+# 占位符：{{CODX_HOME}}  {{MODEL}}  {{REASONING_EFFORT}}  {{PROVIDER_NAME}}  {{BASE_URL}}  {{HAS_DESKTOP_BUNDLED}}
+model_provider = "custom"
+model = "{{MODEL}}"
+model_reasoning_effort = "{{REASONING_EFFORT}}"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "{{PROVIDER_NAME}}"
+base_url = "{{BASE_URL}}"
+wire_api = "responses"
+requires_openai_auth = true
+experimental_bearer_token = "PROXY_MANAGED"
+
+[desktop]
+followUpQueueMode = "steer"
+
+# ---- 桌面端 openai-bundled 插件（仅桌面版存在时启用，CLI-only 机器跳过）----
+{{#HAS_DESKTOP_BUNDLED}}
+[marketplaces.openai-bundled]
+source_type = "local"
+source = "{{CODEX_HOME}}/.tmp/bundled-marketplaces/openai-bundled"
+
+[plugins."browser@openai-bundled"]
+enabled = true
+[plugins."unified-computer-use@openai-bundled"]
+enabled = true
+[plugins."visualize@openai-bundled"]
+enabled = true
+{{/HAS_DESKTOP_BUNDLED}}

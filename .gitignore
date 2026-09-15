@@ -1,0 +1,27 @@
+# ---------- 密钥 / 凭证：绝不入库 ----------
+auth.json
+*.key
+*.pem
+.env
+.env.*
+*.credentials
+id_rsa*
+id_ed25519*
+
+# ---------- 备份 / 本地真实配置 ----------
+*.bak
+*.bak-*
+*.local
+*.local.*
+per-agent/*.toml
+per-agent/*.json
+per-agent/*.jsonc
+.claude/settings.json
+.codex/config.toml
+.config/opencode/opencode.jsonc
+
+# ---------- 运行时 / 日志 ----------
+*.log
+logs/
+node_modules/
+.DS_Store

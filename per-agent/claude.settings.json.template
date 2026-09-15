@@ -1,0 +1,15 @@
+{
+  "effortLevel": "{{EFFORT_LEVEL}}",
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
+    "ANTHROPIC_BASE_URL": "{{BASE_URL}}"
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "git", "url": "https://github.com/anthropics/claude-plugins-official.git" }
+    },
+    "superpowers-marketplace": {
+      "source": { "source": "git", "url": "https://github.com/obra/superpowers-marketplace.git" }
+    }
+  }
+}

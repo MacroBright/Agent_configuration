@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": { "*": "ask" },
+  // 本机 CANN 插件（路径由 install.sh 注入；若不用 CANN 可留空数组）
+  "plugin": [
+    "{{CANNWORK_PLUGIN}}",
+    "{{CANNBOT_PLUGIN}}"
+  ],
+  "mcp": {
+    "rag-retrieval": {
+      "type": "remote",
+      "url": "{{RAG_URL}}",
+      "enabled": true,
+      "oauth": false
+    }
+  }
+}

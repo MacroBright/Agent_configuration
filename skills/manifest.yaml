@@ -1,0 +1,36 @@
+# agent-config skills 源清单
+# 原则：仓库不重新分发第三方 skill 实体，只记录“从哪里拉、拉到哪个白名单”。
+# 安装时再从各源 clone，按 curated.txt 白名单把命中的 skill 复制进激活区。
+# 授权提示：以下均为第三方开源仓库，请按其各自许可证使用；本仓库只引用其地址。
+
+sources:
+  - id: superpowers                # 14 个流程 skill（brainstorming/writing-plans/tdd/sysdebug 等）
+    repo: https://github.com/obra/superpowers.git
+    branch: main
+    skills_subpath: skills
+
+  - id: superpowers-marketplace    # obra 社区技能市场（如需更多流程/命令项）
+    repo: https://github.com/obra/superpowers-marketplace.git
+    branch: main
+    skills_subpath: skills         # 安装时核对实际子目录
+
+  - id: ecc                        # everything-claude-code 大盘（286 个），仅取 curated 白名单
+    repo: https://github.com/affaan-m/everything-claude-code.git
+    branch: main
+    skills_subpath: skills
+
+  - id: claude-plugins-official    # Anthropic 官方插件（skill-creator 等）
+    repo: https://github.com/anthropics/claude-plugins-official.git
+    branch: main
+    skills_subpath: skills
+
+  - id: claude-mem                 # 长期记忆插件（可选）
+    repo: https://github.com/thedotmack/claude-mem.git
+    branch: main
+    skills_subpath: .             # 安装时核对
+
+# 安装策略
+strategy:
+  mode: curated                    # curated：只把 curated.txt 里的白名单 skill 复制进激活区
+  active_dir: "{{SKILLS_DIR}}"     # 默认 ~/.agents/skills
+  # 安装前会把现有激活区整体移到 ~/.agents/skills-archived-<YYYYMMDD> 作为备份

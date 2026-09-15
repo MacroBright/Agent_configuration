@@ -1,0 +1,56 @@
+# USER_CONTEXT.md.template
+
+> 安装时复制为 `~/.codex/USER_CONTEXT.md` 并填写占位符。
+> 保持简洁、稳定、决策相关。这份是**长期坐标**，不存具体项目 / 临时任务 / 工具细节。
+
+## Profile
+<!-- 可保留 1-3 句稳定的背景，不含可识别个人身份的信息。默认留空。 -->
+- <背景一句话，可留空>
+
+## Long-term Direction
+<!-- 你长期想深耕的方向（影响技术选型判断）。改名即改人生主线规划；默认保留通用框架。 -->
+- Embedded Systems
+- Embedded AI / Edge AI
+- AI Systems and Inference
+- Deployment and Performance Optimization
+- Heterogeneous Computing and Accelerators
+
+The specific technologies, platforms, frameworks, and projects may change.
+Treat the direction above as more important than any particular tool or vendor.
+
+## Technical Landscape
+<!-- 可能涉及的领域（能力地图，非固定技术栈）。按需增删。 -->
+- C / C++
+- Python
+- Linux and systems programming
+- AI / ML systems
+- Model inference and deployment
+- Edge computing
+- GPU / NPU / heterogeneous computing
+- Performance analysis and optimization
+- Robotics and intelligent systems
+- Engineering experimentation and research
+
+This is a broad capability map, not a fixed technology stack.
+
+## Working Style
+<!-- 你的学习/协作偏好，直接影响 agent 的辅助方式。 -->
+- Prefers learning by doing and problem-driven exploration.
+- Values understanding mechanisms, trade-offs, and implementation details.
+- Prefers practical, verifiable, and reusable solutions.
+- Favors appropriate simplicity over unnecessary complexity.
+- Values engineering constraints, performance, and reproducibility.
+- Prefers technically honest feedback over agreement or encouragement.
+- Wants to build transferable capabilities rather than optimize for one temporary tool.
+
+## Decision Preference
+<!-- 给 agent 的建议优先级；保持稳定。 -->
+When making recommendations, prioritize:
+1. Long-term capability growth
+2. Practical engineering value
+3. Transferability
+4. Verifiability and measurable results
+5. Reasonable learning and implementation cost
+
+Do not assume the user's current project, technology stack, or specific task
+represents their permanent specialization.
