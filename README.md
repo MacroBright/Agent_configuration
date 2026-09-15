@@ -1,70 +1,54 @@
-# agent-config — Personal Agent Configuration / Agent Environment Bootstrap
+# agent-config
 
-把跨机器 / 跨工具（Codex、Claude Code、OpenCode）的 agent 配置抽成
-**配置规范 + 用户上下文 + Skills 清单 + 每-agent 适配器 + 安装/验证脚本**，
-装新机或换 agent 时克隆仓库 → `./install.sh` → `./verify.sh` → Ready，无需反复手配。
+Personal agent configuration, versioned and reused across machines and CLI agents (Codex, Claude Code, OpenCode).
 
-流程：
-```text
-clone → ./install.sh → Agent Environment(规则+上下文+skills+每-agent配置) → ./verify.sh → Ready
-```
+Instead of a single oversized `AGENTS.md`, this repo keeps the rules, the user context, and the per-agent adapters separate. Switching to a fresh machine or another agent is a `clone` plus `install.sh`.
 
-> ⚠️ 私有仓库。本仓库只放**规则、模板、清单**；**不放密钥、不放本机真实路径、不重新分发第三方 skill 实体**。
+## What's inside
 
-## 铁律（请勿违反）
-1. **密钥不入库**：API Key / token 由 `install.sh` 写入本地 `~/.codex/auth.json` 并 `chmod 600`。
-2. **路径模板化**：所有 `/home/<user>`、桌面路径只以 `{{占位符}}` 出现，安装时本地注入。
-3. **skill 清单拉取**：第三方 skill（superpowers / ecc 等）只记录源头，不打包其内容（尊重其许可证 + 可跟上游更新）。
-4. **画像中性化**：`USER_CONTEXT.md` 只存长期方向 / 工作偏好，**不含可识别身份信息**。
+- `global/AGENTS.md` — shared rules layer, read by every agent
+- `global/USER_CONTEXT.md.template` — stable user profile, filled in at install time
+- `global/templates/project-AGENTS.md` — starting point for a new project's rules
+- `per-agent/*.template` — config templates per tool, machine-specific values as placeholders
+- `skills/manifest.yaml` + `skills/curated.txt` — skill sources and the active whitelist (not vendored)
+- `install.sh` / `verify.sh` — bootstrap and re-check an environment
 
-## 结构
-```text
-agent-config/
-├── global/
-│   ├── AGENTS.md                  # 跨 agent 规则层（12 节）
-│   ├── USER_CONTEXT.md.template   # 用户画像模板（安装时复制填写）
-│   └── templates/project-AGENTS.md# 新项目 AGENTS.md 模板
-├── skills/
-│   ├── manifest.yaml              # skill 源清单（从哪拉）
-│   └── curated.txt                # 激活白名单（75 个）
-├── per-agent/                     # 各工具配置模板（.template，含占位符）
-├── install.sh                     # 一键引导：备份→写规则→注入密钥→生成各工具配置
-├── verify.sh                      # 冒烟 + 推前密钥扫描
-└── README.md / LICENSE / .gitignore
-```
+## Getting started
 
-## 快速开始（新机器）
+On a fresh machine:
+
 ```bash
-git clone <你的私有仓库地址> ~/agent-config && cd ~/agent-config
-./install.sh        # 交互式：会问你模型 / Base URL / API Key / CANN 路径等
-./verify.sh         # 推前冒烟 + 密钥扫描
-# 然后去填 ~/.codex/USER_CONTEXT.md，并重开一个会话生效
-```
-
-## 如何新增一种 agent
-1. 在 `per-agent/` 加一份 `<agent>.template`，把本机专属值写成 `{{占位符}}`。
-2. 在 `install.sh` 加一段：备份 → 从模板渲染 → 写入该 agent 配置目录。
-3. 若依赖多个 skill，在 `skills/manifest.yaml` 加源、`curated.txt` 加白名单。
-
-## 如何安全同步回本仓库
-```bash
-# 每次 push 前必跑
+git clone <this repo> ~/agent-config
+cd ~/agent-config
+./install.sh
 ./verify.sh
-# 只提交规则/模板/清单
-git add global skills per-agent install.sh verify.sh README.md LICENSE .gitignore
-git commit -m "chore: 更新……"
-git push origin main
 ```
-> `.gitignore` 已排除 `auth.json`、`*.bak*`、真实 `config.toml` 等；即使如此，push 前仍以 `verify.sh` 为准。
 
-## skills 目录作者约定（防止退化成大知识库）
-- `skills/` 只放**清单与源**（`manifest.yaml` + `curated.txt`），不内置领域知识实体。
-- 编写/挑选新 skill 时按**功能角色**归类思考（`learning / research / debugging / coding / architecture / performance`），
-  而不是按领域堆文件（`ascend.md / cpp.md / robotics.md …`）。
-- 领域知识（Ascend、C++、ROS2、CUDA 等）由**项目文档 / 专门 skill** 按需加载；
-  激活区目录保持**扁平**（Codex 直接扫描 `~/.agents/skills/*/`，物理子目录会破坏发现机制）。
-- 目标是：**高层规则稳定、能力模块可替换、项目上下文动态。**
+`install.sh` is interactive. It detects which agents are installed (Codex, Claude Code, OpenCode), backs up existing config, then asks for the model, base URL, API key, and any project-specific paths before writing files under `$HOME`. Secrets go to `~/.codex/auth.json` (chmod 600) and never into this repo.
 
-## 授权说明
-- 本仓库本人自定义内容按根目录 `LICENSE`（MIT）。
-- 引用的第三方仓库（`obra/superpowers`、`affaan-m/everything-claude-code`、`anthropics/claude-plugins-official`、`thedotmack/claude-mem`）各按其自身许可证，本仓库仅引用其地址、不重新分发其内容。
+`verify.sh` scans the repo for leaked secrets and confirms the installed files, symlinks, and skills are where the agents expect them.
+
+## Rules this repo follows
+
+- No secrets in the repo. Keys are written locally by `install.sh`, outside the repository.
+- No machine-specific paths hard-coded. Anything that varies per machine is a `{{placeholder}}`, filled in during install.
+- Third-party skills are not vendored. The repo records where they come from in `skills/manifest.yaml`.
+- `USER_CONTEXT.md` stores long-term direction and preferences, not a résumé or current-project details.
+
+## Adding a new agent
+
+1. Add a template, e.g. `per-agent/<agent>.template`, with `{{placeholders}}` for machine-specific values.
+2. Add an install block in `install.sh` that backs up, renders, and writes the template.
+3. If the agent needs extra skills, add a source to `manifest.yaml` and extend `curated.txt`.
+
+## Skills organization
+
+Keep `skills/` as a manifest, not a knowledge base. Aim for a small set of well-described skills grouped by role — learning, research, debugging, coding, architecture, performance — rather than a long list of domain files (e.g. `ascend.md`, `cpp.md`). Domain knowledge is loaded by projects or dedicated skills on demand. Active skill directories stay flat so Codex can scan `~/.agents/skills/*/`.
+
+## Security
+
+`.gitignore` excludes `auth.json`, backups, and real config files. Run `./verify.sh` before every push as a final secret check.
+
+## License
+
+MIT for the content in this repo. Referenced marketplaces and skills (obra/superpowers, everything-claude-code, claude-plugins-official, claude-mem) are third-party and governed by their own licenses.
