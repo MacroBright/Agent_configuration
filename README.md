@@ -1,5 +1,7 @@
 # agent-config
 
+<div align="center">[English](README.md) · [简体中文](README.zh-CN.md)</div>
+
 Personal agent configuration, versioned and reused across machines and CLI agents (Codex, Claude Code, OpenCode).
 
 Instead of a single oversized `AGENTS.md`, this repo keeps the rules, the user context, and the per-agent adapters separate. Switching to a fresh machine or another agent is a `clone` plus `install.sh`.
