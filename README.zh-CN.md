@@ -1,6 +1,6 @@
 # agent-config
 
-个人 Agent 配置仓库，跨机器、跨 CLI Agent（Codex、Claude Code、OpenCode）统一复用。
+个人 Agent 配置仓库，跨机器、跨 Agent（Codex、Claude Code、OpenCode、Antigravity）统一复用。
 
 本仓库不把配置塞进一份巨大的 `AGENTS.md`，而是把规则、用户上下文、每个 Agent 的适配分开存放。换新机器或换 Agent 时，一次 `clone` 加 `./install.sh` 即可恢复。
 
@@ -8,7 +8,8 @@
 
 - `global/AGENTS.md` — 跨 Agent 共享的规则层
 - `global/USER_CONTEXT.md.template` — 稳定的用户画像模板，安装时填写
-- `global/templates/project-AGENTS.md` — 新项目规则文件的起点
+- `global/templates/project-AGENTS.md` — 通用新项目规则文件起点
+- `global/templates/robotics-AGENTS.md` — 机器人与具身智能项目专用规则（CAN/ROS2/LeRobot/昇腾/物理安全）
 - `per-agent/*.template` — 各工具配置模板，机器相关的值用占位符
 - `per-agent/claude.mcp.json.template` — Claude Code MCP 基线（github/obsidian/arxiv/huggingface；刻意排除过时的 `memory` 与 `sequential-thinking`）
 - `skills/manifest.yaml` 与 `skills/curated.txt` — skill 来源清单与激活白名单（不打包第三方内容）
@@ -25,7 +26,7 @@ cd ~/agent-config
 ./verify.sh
 ```
 
-`install.sh` 是交互式的。它会先检测本机装了哪些 Agent（Codex / Claude Code / OpenCode），备份已有配置，然后询问模型、Base URL、API Key 以及项目相关路径，最后把文件写入 `$HOME`。对 Claude Code 采用**合并而非覆盖**：既有的 `env`、插件、市场保留不动，`deny`/`ask` 权限规则取并集，MCP 只补缺失的 server、绝不删除既有条目。密钥写入 `~/.codex/auth.json`（chmod 600），绝不会进入本仓库。
+`install.sh` 是交互式的。它会先检测本机装了哪些 Agent（Codex / Claude Code / OpenCode / Antigravity），备份已有配置，然后询问模型、Base URL、API Key 以及项目相关路径，最后把文件写入 `$HOME`。对 Claude Code 采用**合并而非覆盖**：既有的 `env`、插件、市场保留不动，`deny`/`ask` 权限规则取并集，MCP 只补缺失的 server、绝不删除既有条目。密钥写入 `~/.codex/auth.json`（chmod 600），绝不会进入本仓库。
 
 `verify.sh` 会扫描仓库是否有泄露的密钥，并确认安装后的文件、软链接、skill 是否都在 Agent 预期位置；同时检查 Claude 侧：`settings.json` JSON 合法性、`permissions.deny` 非空、插件/市场数量、`CLAUDE.md` 存在性，并对过时 MCP server 给出提示。
 

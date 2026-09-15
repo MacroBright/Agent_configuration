@@ -12,7 +12,7 @@ sources:
   - id: superpowers-marketplace    # obra 社区技能市场（如需更多流程/命令项）
     repo: https://github.com/obra/superpowers-marketplace.git
     branch: main
-    skills_subpath: skills         # 安装时核对实际子目录
+    skills_subpath: skills
 
   - id: ecc                        # everything-claude-code 大盘（286 个），仅取 curated 白名单
     repo: https://github.com/affaan-m/everything-claude-code.git
@@ -27,7 +27,17 @@ sources:
   - id: claude-mem                 # 长期记忆插件（可选）
     repo: https://github.com/thedotmack/claude-mem.git
     branch: main
-    skills_subpath: .             # 安装时核对
+    skills_subpath: .
+
+  - id: agent-skills-curated       # Matt Pocock 工程方法论精选技能（interview-me/spec-driven/doubt-driven 等）
+    repo: local                    # 本机预装或按需归档
+    branch: main
+    skills_subpath: skills
+
+  - id: forgemind-robotics         # 机器人硬件安全、图表设计与工作流调度
+    repo: local
+    branch: main
+    skills_subpath: skills
 
 # 安装策略
 strategy:

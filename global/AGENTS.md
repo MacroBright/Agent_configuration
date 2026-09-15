@@ -58,7 +58,7 @@
 - Architecture：先方案与权衡，获批后再实现。
 - Performance：先基线/剖析定位瓶颈，再优化，用数据证明改善。
 
-常用域：具身智能（ROS2 包结构、URDF/launch、仿真先于真机、ONNX 部署）、嵌入式（交叉编译、CMake）、AI 推理（config 分离、混合精度、checkpoint 管理）、仿真（记录仿真与真机差异假设）。具体域约定下沉到项目 AGENTS.md。
+常用域：具身智能（ROS2 包结构、URDF/launch、仿真先于真机、ONNX 部署）、嵌入式（交叉编译、CMake）、AI 推理（config 分离、混合精度、checkpoint 管理）、仿真（记录仿真与真机差异假设）。具体域约定下沉到项目 AGENTS.md（机器人与具身智能项目推荐使用 global/templates/robotics-AGENTS.md 模板）。
 
 ## 6. 编码规则（Coding Rules）
 

@@ -12,9 +12,9 @@ if [ -n "$HITS" ]; then echo "!! 发现疑似密钥："; echo "$HITS"; FAIL=1; e
 
 echo ""
 echo "===== 2) 仓库完整性 ====="
-for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/project-AGENTS.md \
+for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/project-AGENTS.md global/templates/robotics-AGENTS.md \
          skills/manifest.yaml skills/curated.txt \
-         per-agent/codex.config.toml.template per-agent/claude.settings.json.template per-agent/claude.mcp.json.template per-agent/opencode.jsonc.template \
+         per-agent/codex.config.toml.template per-agent/claude.settings.json.template per-agent/claude.mcp.json.template per-agent/opencode.jsonc.template per-agent/antigravity.mcp_config.json.template \
          install.sh verify.sh README.md .gitignore; do
   if [ -f "$REPO_DIR/$f" ]; then echo "  ✓ $f"; else echo "  ✗ 缺失 $f"; FAIL=1; fi
 done
@@ -31,6 +31,7 @@ echo ""
 echo "===== 4) 安装正确性细查（关键路径/软链/可发现性）====="
 # 位置正确
 [ -f "$HOME/.codex/AGENTS.md" ] && echo "  ✓ ~/.codex/AGENTS.md 就位" || { echo "  ✗ ~/.codex/AGENTS.md 缺失"; FAIL=1; }
+
 # Claude 软链（若 Claude 已装）
 if [ -d "$HOME/.claude" ]; then
   if [ -L "$HOME/.claude/CLAUDE.md" ] || [ -f "$HOME/.claude/CLAUDE.md" ]; then
@@ -39,6 +40,16 @@ if [ -d "$HOME/.claude" ]; then
     echo "  ! ~/.claude/CLAUDE.md 缺失（可 ln -s ~/.codex/AGENTS.md ~/.claude/CLAUDE.md）"
   fi
 fi
+
+# Antigravity 状态（若 Antigravity 已装）
+if [ -d "$HOME/.gemini" ]; then
+  if [ -f "$HOME/.gemini/config/GEMINI.md" ] && [ -f "$HOME/.gemini/config/mcp_config.json" ]; then
+    echo "  ✓ Antigravity 规则与 MCP 配置就位"
+  else
+    echo "  ! Antigravity 配置文件不完整"
+  fi
+fi
+
 # skill 可发现：curated 白名单在激活区是否都带 SKILL.md
 TOTAL=$(wc -l < "$REPO_DIR/skills/curated.txt")
 MISS=0
@@ -47,8 +58,9 @@ while IFS= read -r s; do
   [ -f "$HOME/.agents/skills/$s/SKILL.md" ] || { echo "  ✗ skill 缺失: $s"; MISS=1; }
 done < "$REPO_DIR/skills/curated.txt"
 if [ "$MISS" -eq 0 ]; then echo "  ✓ 白名单 $TOTAL 个 skill 全部在激活区可发现"; else echo "  ✗ 有缺失 skill"; FAIL=1; fi
+
 # 备份是否存在（冲突可回退）
-BK=$(find "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" -maxdepth 1 -name '*.bak-*' 2>/dev/null | head -5 | wc -l)
+BK=$(find "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" "$HOME/.gemini" -maxdepth 2 -name '*.bak-*' 2>/dev/null | head -5 | wc -l)
 echo "  安装备份数量(.bak-*): $BK"
 
 echo ""

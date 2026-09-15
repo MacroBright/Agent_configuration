@@ -1,0 +1,52 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "arxiv": {
+      "command": "uvx",
+      "args": [
+        "arxiv-mcp-server"
+      ]
+    },
+    "huggingface": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "huggingface-mcp-server",
+        "-t",
+        "stdio"
+      ],
+      "env": {
+        "HUGGINGFACE_API_KEY": "{{HUGGINGFACE_API_KEY}}"
+      }
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "obsidian-mcp",
+        "serve",
+        "--vault",
+        "bright-vault={{OBSIDIAN_VAULT_PATH}}"
+      ]
+    },
+    "markitdown": {
+      "command": "uvx",
+      "args": [
+        "markitdown-mcp"
+      ]
+    }
+  }
+}

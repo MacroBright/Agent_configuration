@@ -22,7 +22,7 @@ backup_file(){ # backup_file <path>
 
 detect_agents(){
   say "目标 Agent 环境——"
-  for probe in "$HOME_DIR/.codex:Codex" "$HOME_DIR/.claude:Claude Code" "$HOME_DIR/.config/opencode:OpenCode"; do
+  for probe in "$HOME_DIR/.codex:Codex" "$HOME_DIR/.claude:Claude Code" "$HOME_DIR/.config/opencode:OpenCode" "$HOME_DIR/.gemini:Antigravity"; do
     p="${probe%%:*}"; n="${probe##*:}"
     if [ -d "$p" ]; then say "  ✓ $n 已安装 → 将处理"; else say "  – $n 未安装 → 跳过"; fi
   done
@@ -30,9 +30,11 @@ detect_agents(){
 
 # ---------- 0. 安全检查 ----------
 say "在写任何东西之前，先跑一次仓库密钥扫描（若有泄露立即中止）"
-if grep -rInE --exclude-dir=.git -E '(ark-|sk-[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY|OPENAI_API_KEY=.{20,}|ghp_[A-Za-z0-9]{20,})' "$REPO_DIR" 2>/dev/null; then
+if grep -rInE --exclude-dir=.git -E '(ark-[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY|OPENAI_API_KEY=.{20,}|ghp_[A-Za-z0-9]{20,})' "$REPO_DIR" 2>/dev/null; then
   say "!! 仓库中发现疑似密钥，中止安装。请先清理后重试。"; exit 1
 fi
+
+detect_agents
 
 # ---------- 1. 全局规则 ----------
 if [ -d "${HOME_DIR}/.codex" ]; then
@@ -41,7 +43,8 @@ if [ -d "${HOME_DIR}/.codex" ]; then
   say "已写入 ~/.codex/AGENTS.md（全局规则层）"
   mkdir -p "${HOME_DIR}/.codex/context/templates"
   cp "$REPO_DIR/global/templates/project-AGENTS.md" "${HOME_DIR}/.codex/context/templates/project-AGENTS.md"
-  say "已写入项目级模板"
+  cp "$REPO_DIR/global/templates/robotics-AGENTS.md" "${HOME_DIR}/.codex/context/templates/robotics-AGENTS.md"
+  say "已写入通用与机器人领域项目级模板"
   if [ ! -f "${HOME_DIR}/.codex/USER_CONTEXT.md" ]; then
     cp "$REPO_DIR/global/USER_CONTEXT.md.template" "${HOME_DIR}/.codex/USER_CONTEXT.md"
     say "已生成 ~/.codex/USER_CONTEXT.md，请打开填写占位符"
@@ -140,7 +143,43 @@ if [ -d "${HOME_DIR}/.config/opencode" ]; then
   say "已生成 ~/.config/opencode/opencode.jsonc"
 fi
 
-# ---------- 5. Skills 清单拉取 ----------
+# ---------- 5. Antigravity & Antigravity IDE ----------
+if [ -d "${HOME_DIR}/.gemini" ]; then
+  say "-- Antigravity & Antigravity IDE --"
+  mkdir -p "${HOME_DIR}/.gemini/config"
+  backup_file "${HOME_DIR}/.gemini/config/mcp_config.json"
+  
+  # 检测本地 Obsidian Vault 路径
+  DEF_VAULT=""
+  [ -d "${HOME_DIR}/win_office/Liang/Documents/Bright的知识库" ] && DEF_VAULT="${HOME_DIR}/win_office/Liang/Documents/Bright的知识库"
+  VAULT_PATH="$(ask 'Obsidian 知识库绝对路径' "$DEF_VAULT")"
+
+  # 检测本地 HuggingFace Token
+  HF_TOKEN=""
+  [ -f "${HOME_DIR}/.cache/huggingface/token" ] && HF_TOKEN="$(head -n 1 "${HOME_DIR}/.cache/huggingface/token" 2>/dev/null || true)"
+  HF_TOKEN="$(ask 'Hugging Face API Token' "$HF_TOKEN")"
+
+  sed -e "s|{{OBSIDIAN_VAULT_PATH}}|$VAULT_PATH|g" -e "s|{{HUGGINGFACE_API_KEY}}|$HF_TOKEN|g" \
+      "$REPO_DIR/per-agent/antigravity.mcp_config.json.template" > "${HOME_DIR}/.gemini/config/mcp_config.json"
+  say "已生成 ~/.gemini/config/mcp_config.json（已配置 7 大核心 MCP 服务）"
+
+  # 配置技能发现路径
+  cat << 'SKJSON' > "${HOME_DIR}/.gemini/config/skills.json"
+{
+  "entries": [
+    {
+      "path": "~/.gemini/config/skills"
+    },
+    {
+      "path": "~/.agents/skills"
+    }
+  ]
+}
+SKJSON
+  say "已配置 ~/.gemini/config/skills.json 双重技能检索路径"
+fi
+
+# ---------- 6. Skills 清单拉取 ----------
 say "-- Skills --"
 if command -v git >/dev/null 2>&1; then
   say "第三方 skill 源请按 skills/README 手动拉取（manifest.yaml 有源地址）；不自动 clone。"
