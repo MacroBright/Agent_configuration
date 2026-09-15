@@ -4,12 +4,39 @@
     "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
     "ANTHROPIC_BASE_URL": "{{BASE_URL}}"
   },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(dd *)",
+      "Bash(mkfs *)",
+      "Bash(openocd *)",
+      "Bash(jlink *)",
+      "Bash(dfu-util -D *)"
+    ],
+    "ask": [
+      "Bash(sudo *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)"
+    ]
+  },
+  "enabledPlugins": {
+    "claude-mem@thedotmack": true,
+    "ecc@ecc": true,
+    "skill-creator@claude-plugins-official": true,
+    "superpowers@superpowers-marketplace": true
+  },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
       "source": { "source": "git", "url": "https://github.com/anthropics/claude-plugins-official.git" }
     },
+    "ecc": {
+      "source": { "source": "git", "url": "https://github.com/affaan-m/everything-claude-code.git" }
+    },
     "superpowers-marketplace": {
       "source": { "source": "git", "url": "https://github.com/obra/superpowers-marketplace.git" }
+    },
+    "thedotmack": {
+      "source": { "source": "git", "url": "https://github.com/thedotmack/claude-mem.git" }
     }
   }
 }

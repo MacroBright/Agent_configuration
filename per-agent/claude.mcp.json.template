@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "github-mcp-server": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-mcp"]
+    },
+    "arxiv": {
+      "command": "npx",
+      "args": ["-y", "arxiv-mcp-server"]
+    },
+    "huggingface": {
+      "command": "npx",
+      "args": ["-y", "huggingface-mcp-server"]
+    }
+  }
+}

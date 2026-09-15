@@ -12,6 +12,7 @@ Instead of a single oversized `AGENTS.md`, this repo keeps the rules, the user c
 - `global/USER_CONTEXT.md.template` — stable user profile, filled in at install time
 - `global/templates/project-AGENTS.md` — starting point for a new project's rules
 - `per-agent/*.template` — config templates per tool, machine-specific values as placeholders
+- `per-agent/claude.mcp.json.template` — Claude Code MCP baseline (github/obsidian/arxiv/huggingface; the deprecated `memory` and `sequential-thinking` servers are deliberately excluded)
 - `skills/manifest.yaml` + `skills/curated.txt` — skill sources and the active whitelist (not vendored)
 - `install.sh` / `verify.sh` — bootstrap and re-check an environment
 
@@ -26,9 +27,9 @@ cd ~/agent-config
 ./verify.sh
 ```
 
-`install.sh` is interactive. It detects which agents are installed (Codex, Claude Code, OpenCode), backs up existing config, then asks for the model, base URL, API key, and any project-specific paths before writing files under `$HOME`. Secrets go to `~/.codex/auth.json` (chmod 600) and never into this repo.
+`install.sh` is interactive. It detects which agents are installed (Codex, Claude Code, OpenCode), backs up existing config, then asks for the model, base URL, API key, and any project-specific paths before writing files under `$HOME`. For Claude Code it merges instead of overwriting: existing `env`, plugins and marketplaces are kept, permission rules (`deny`/`ask`) are unioned, and missing MCP servers are added without removing any. Secrets go to `~/.codex/auth.json` (chmod 600) and never into this repo.
 
-`verify.sh` scans the repo for leaked secrets and confirms the installed files, symlinks, and skills are where the agents expect them.
+`verify.sh` scans the repo for leaked secrets and confirms the installed files, symlinks, and skills are where the agents expect them. It also checks the Claude side: `settings.json` syntax, non-empty `permissions.deny`, plugin/marketplace counts, `CLAUDE.md` presence, and flags the deprecated MCP servers.
 
 ## Rules this repo follows
 

@@ -86,12 +86,45 @@ fi
 # ---------- 3. Claude Code ----------
 if [ -d "${HOME_DIR}/.claude" ]; then
   say "-- Claude Code --"
-  backup_file "${HOME_DIR}/.claude/settings.json"
-  BASE_CL="$(ask 'Claude Base URL(留空则不写 env)' 'http://127.0.0.1:15721')"
+  S="${HOME_DIR}/.claude/settings.json"
+  M="${HOME_DIR}/.claude/mcp.json"
+  backup_file "$S"
+  backup_file "$M"
+  BASE_CL="$(ask 'Claude Base URL(已有配置会保留，留空则用默认)' 'http://127.0.0.1:15721')"
   EFFORT="$(ask 'effortLevel(medium)' 'medium')"
+  TMP_TPL="$(mktemp)"
   sed -e "s|{{BASE_URL}}|$BASE_CL|g" -e "s|{{EFFORT_LEVEL}}|$EFFORT|g" \
-      "$REPO_DIR/per-agent/claude.settings.json.template" > "${HOME_DIR}/.claude/settings.json"
-  say "已生成 ~/.claude/settings.json"
+      "$REPO_DIR/per-agent/claude.settings.json.template" > "$TMP_TPL"
+
+  if [ -f "$S" ]; then
+    # 增量合并：既有 env/model/theme 保留不动；deny/ask 并集去重；插件与市场只补缺失项
+    jq -S --slurpfile t "$TMP_TPL" --arg base "$BASE_CL" '
+      .effortLevel //= $t[0].effortLevel
+      | .env.ANTHROPIC_AUTH_TOKEN //= $t[0].env.ANTHROPIC_AUTH_TOKEN
+      | (if (.env.ANTHROPIC_BASE_URL // "") == "" then .env.ANTHROPIC_BASE_URL = $base else . end)
+      | .permissions.deny = ((.permissions.deny // []) + ($t[0].permissions.deny // []) | unique)
+      | .permissions.ask  = ((.permissions.ask  // []) + ($t[0].permissions.ask  // []) | unique)
+      | .enabledPlugins = ((.enabledPlugins // {}) * ($t[0].enabledPlugins // {}))
+      | .extraKnownMarketplaces = ((.extraKnownMarketplaces // {}) * ($t[0].extraKnownMarketplaces // {}))
+    ' "$S" > "$S.tmp" && mv "$S.tmp" "$S"
+    say "已合并 $S（既有 env/插件保留，安全规则取并集）"
+  else
+    cp "$TMP_TPL" "$S"
+    say "已生成 $S"
+  fi
+
+  # MCP：只补缺失的 server，绝不删除既有条目
+  if [ -f "$M" ]; then
+    jq -S --slurpfile t "$REPO_DIR/per-agent/claude.mcp.json.template" \
+      '.mcpServers = ((.mcpServers // {}) * ($t[0].mcpServers // {}))' \
+      "$M" > "$M.tmp" && mv "$M.tmp" "$M"
+    say "已合并 $M（缺失 server 补齐，既有条目不动）"
+  else
+    cp "$REPO_DIR/per-agent/claude.mcp.json.template" "$M"
+    say "已生成 $M"
+  fi
+  rm -f "$TMP_TPL"
+
   [ ! -e "${HOME_DIR}/.claude/CLAUDE.md" ] && ln -s "${HOME_DIR}/.codex/AGENTS.md" "${HOME_DIR}/.claude/CLAUDE.md" 2>/dev/null && say "已软链 ~/.claude/CLAUDE.md -> ~/.codex/AGENTS.md"
 fi
 
