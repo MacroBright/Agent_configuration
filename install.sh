@@ -20,6 +20,14 @@ backup_file(){ # backup_file <path>
   [ -f "$1" ] && cp "$1" "$1.bak-$DATE" && say "备份 $1 -> $1.bak-$DATE"
 }
 
+detect_agents(){
+  say "目标 Agent 环境——"
+  for probe in "$HOME_DIR/.codex:Codex" "$HOME_DIR/.claude:Claude Code" "$HOME_DIR/.config/opencode:OpenCode"; do
+    p="${probe%%:*}"; n="${probe##*:}"
+    if [ -d "$p" ]; then say "  ✓ $n 已安装 → 将处理"; else say "  – $n 未安装 → 跳过"; fi
+  done
+}
+
 # ---------- 0. 安全检查 ----------
 say "在写任何东西之前，先跑一次仓库密钥扫描（若有泄露立即中止）"
 if grep -rInE --exclude-dir=.git -E '(ark-|sk-[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY|OPENAI_API_KEY=.{20,}|ghp_[A-Za-z0-9]{20,})' "$REPO_DIR" 2>/dev/null; then

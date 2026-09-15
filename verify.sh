@@ -28,4 +28,28 @@ echo "  本机 ~/.codex/AGENTS.md 存在: $([ -f "$HOME/.codex/AGENTS.md" ] && e
 [ -f "$HOME/.codex/USER_CONTEXT.md" ] && echo "  本机 USER_CONTEXT.md: 存在" || echo "  本机 USER_CONTEXT.md: 未初始化"
 
 echo ""
+echo "===== 4) 安装正确性细查（关键路径/软链/可发现性）====="
+# 位置正确
+[ -f "$HOME/.codex/AGENTS.md" ] && echo "  ✓ ~/.codex/AGENTS.md 就位" || { echo "  ✗ ~/.codex/AGENTS.md 缺失"; FAIL=1; }
+# Claude 软链（若 Claude 已装）
+if [ -d "$HOME/.claude" ]; then
+  if [ -L "$HOME/.claude/CLAUDE.md" ] || [ -f "$HOME/.claude/CLAUDE.md" ]; then
+    echo "  ✓ ~/.claude/CLAUDE.md 存在（$(readlink "$HOME/.claude/CLAUDE.md" 2>/dev/null || echo 文件)）"
+  else
+    echo "  ! ~/.claude/CLAUDE.md 缺失（可 ln -s ~/.codex/AGENTS.md ~/.claude/CLAUDE.md）"
+  fi
+fi
+# skill 可发现：curated 白名单在激活区是否都带 SKILL.md
+TOTAL=$(wc -l < "$REPO_DIR/skills/curated.txt")
+MISS=0
+while IFS= read -r s; do
+  [ -z "$s" ] && continue
+  [ -f "$HOME/.agents/skills/$s/SKILL.md" ] || { echo "  ✗ skill 缺失: $s"; MISS=1; }
+done < "$REPO_DIR/skills/curated.txt"
+if [ "$MISS" -eq 0 ]; then echo "  ✓ 白名单 $TOTAL 个 skill 全部在激活区可发现"; else echo "  ✗ 有缺失 skill"; FAIL=1; fi
+# 备份是否存在（冲突可回退）
+BK=$(find "$HOME/.codex" "$HOME/.claude" "$HOME/.config/opencode" -maxdepth 1 -name '*.bak-*' 2>/dev/null | head -5 | wc -l)
+echo "  安装备份数量(.bak-*): $BK"
+
+echo ""
 if [ "$FAIL" -eq 0 ]; then echo "✅ verify 通过：可以 git add/commit/push。"; else echo "❌ verify 存在失败项，请先修复。"; exit 1; fi

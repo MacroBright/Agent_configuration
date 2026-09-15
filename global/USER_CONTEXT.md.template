@@ -4,8 +4,9 @@
 > 保持简洁、稳定、决策相关。这份是**长期坐标**，不存具体项目 / 临时任务 / 工具细节。
 
 ## Profile
-<!-- 可保留 1-3 句稳定的背景，不含可识别个人身份的信息。默认留空。 -->
-- <背景一句话，可留空>
+<!-- 只写 1-2 条，回答“这是哪一类用户”，不要写个人履历（学历/公司/证书）。
+     不含可识别个人身份的信息。默认留空。 -->
+- <用户类型一句话，可留空>
 
 ## Long-term Direction
 <!-- 你长期想深耕的方向（影响技术选型判断）。改名即改人生主线规划；默认保留通用框架。 -->
@@ -51,6 +52,7 @@ When making recommendations, prioritize:
 3. Transferability
 4. Verifiability and measurable results
 5. Reasonable learning and implementation cost
+6. Avoid unnecessary specialization in temporary tools or projects
 
 Do not assume the user's current project, technology stack, or specific task
 represents their permanent specialization.

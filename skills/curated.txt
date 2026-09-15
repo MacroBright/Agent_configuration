@@ -26,7 +26,6 @@ handoff
 implement
 implement-spec
 improve-codebase-architecture
-learned
 loop-me
 migrate-to-shoehorn
 misra-c-reviewer

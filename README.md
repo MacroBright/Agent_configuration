@@ -1,7 +1,13 @@
-# agent-config
+# agent-config — Personal Agent Configuration / Agent Environment Bootstrap
 
-自用 **Agent 配置仓库** —— 把跨机器 / 跨工具（Codex、Claude Code、OpenCode）的 agent 配置抽成
-“规则层 + 模板 + 清单”，装新机或换 agent 时只要克隆仓库再跑 `./install.sh`，无需反复手配。
+把跨机器 / 跨工具（Codex、Claude Code、OpenCode）的 agent 配置抽成
+**配置规范 + 用户上下文 + Skills 清单 + 每-agent 适配器 + 安装/验证脚本**，
+装新机或换 agent 时克隆仓库 → `./install.sh` → `./verify.sh` → Ready，无需反复手配。
+
+流程：
+```text
+clone → ./install.sh → Agent Environment(规则+上下文+skills+每-agent配置) → ./verify.sh → Ready
+```
 
 > ⚠️ 私有仓库。本仓库只放**规则、模板、清单**；**不放密钥、不放本机真实路径、不重新分发第三方 skill 实体**。
 
@@ -50,6 +56,14 @@ git commit -m "chore: 更新……"
 git push origin main
 ```
 > `.gitignore` 已排除 `auth.json`、`*.bak*`、真实 `config.toml` 等；即使如此，push 前仍以 `verify.sh` 为准。
+
+## skills 目录作者约定（防止退化成大知识库）
+- `skills/` 只放**清单与源**（`manifest.yaml` + `curated.txt`），不内置领域知识实体。
+- 编写/挑选新 skill 时按**功能角色**归类思考（`learning / research / debugging / coding / architecture / performance`），
+  而不是按领域堆文件（`ascend.md / cpp.md / robotics.md …`）。
+- 领域知识（Ascend、C++、ROS2、CUDA 等）由**项目文档 / 专门 skill** 按需加载；
+  激活区目录保持**扁平**（Codex 直接扫描 `~/.agents/skills/*/`，物理子目录会破坏发现机制）。
+- 目标是：**高层规则稳定、能力模块可替换、项目上下文动态。**
 
 ## 授权说明
 - 本仓库本人自定义内容按根目录 `LICENSE`（MIT）。
