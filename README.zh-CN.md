@@ -121,18 +121,40 @@ cd ~/agent-config
 
 ## 多 Agent 协同与长程知识图谱共享
 
-本系统原生支持 **Antigravity、Claude Code 与 Codex** 在同一项目上协同开发与知识互通：
+本系统原生支持 **Antigravity、Claude Code 与 Codex** 在同一项目上的能力互补协同与持久化知识互通：
 
-### 1. 跨 Agent 共享长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`)
+### 1. 三智能体能力与角色分工矩阵 (Role Matrix)
+
+各 Agent 底层模型属性与外壳机制形成「看得广、想得深、改得准」的精准互补：
+
+| 智能体 (Agent) | 底层模型 / 核心属性 | 核心定位 | 主责场景与能力专长 |
+| :--- | :--- | :--- | :--- |
+| **Antigravity** | **Gemini 3.8 Flash**<br>- 1M 巨量上下文<br>- 自动上下文压缩 (~135k 触发)<br>- 原生 Linux 沙箱<br>- 多模态图文解析 (DeepSWE 71.0%) | **「看得广」**<br>广域侦察与全景影响分析 | - **全局依赖扫描**：利用 1M 上下文摸清大型代码库拓扑、跨模块调用与潜在破坏半径。<br>- **多格式规范预研**：消化 PDF 论文、硬件手册、CAN DBC、通信协议，生成出版级架构图与状态机 (`diagram-design`)。<br>- **长程连续迁移**：利用沙箱与自动压缩，执行耗时跨模块重构、环境脚手架初始化与批量迁移。<br>- **全局回归复核**：最终破坏性排查、全景构建验证与文档闭环。 |
+| **Claude Code** | **DeepSeek V4.1 Flash**<br>- 1M 上下文窗口<br>- 严密独立 Subagent 体系<br>- 严格权限控制 (`Ask/Deny`) | **「想得深」**<br>深度规划与质量安全裁决 | - **需求拆解与架构规划**：从复杂需求到落地设计，识别领域隐性约束，编写结构化 `implementation_plan.md`。<br>- **独立双轴审查**：派生并行 subagent 执行规范与规格审查 (`two-axis-review`)，严格把关质量与边界。<br>- **复杂系统仲裁**：排查多组件交互死锁、隐蔽竞态与状态机冲突。<br>- **安全与关键操作把关**：对硬件操作、不可逆修改实施最高级别安全审计。 |
+| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动测试、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
+
+### 2. 四阶段协同接力闭环 (4-Phase Collaborative Loop)
+
+标准化工程流水线推进各阶段交付物：
+
+```
+[Phase 1: 广域侦察] ──> [Phase 2: 深度规划] ──> [Phase 3: 手术执行] ──> [Phase 4: 全局复核]
+  (Antigravity)           (Claude Code)             (Codex)              (Antigravity)
+   看得广 · 摸脉络         想得深 · 定方案           改得准 · 极速编码       看得广 · 验全景
+   沉淀知识图谱            写入接力黑板              双轴交叉审查            闭环归档
+```
+
+1. **Phase 1: 广域侦察与影响分析 (Antigravity 主导)**：全局扫描代码库依赖拓扑，消化硬件规范与通信协议，绘制出版级架构图，沉淀架构实体至长程图谱。
+2. **Phase 2: 深度规划与质量裁决 (Claude Code 主导)**：纵深剖析业务逻辑，识别隐性约束，拟定 `implementation_plan.md` 并将 Invariants 规则写入 `.agent/SESSION_STATE.md`。
+3. **Phase 3: 手术级执行与交叉审查 (Codex 主导 + Claude Code 监督)**：Codex 以 200+ tok/s 快速产出高密度 TDD 单元测试与驱动核心；Claude Code 调度 subagent 实施双轴代码审查并裁决合入。
+4. **Phase 4: 全局复核与文档闭环 (Antigravity 主导)**：执行全系统构建与集成测试，验证跨模块稳定性，同步更新 ADR 与工程文档，更新黑板状态归档。
+
+### 3. 跨 Agent 共享长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`)
 - 基于官方 MCP 知识图谱协议 (`@modelcontextprotocol/server-memory`)，所有 Agent 统一挂载至本地持久化文件 `~/.agent-memory/knowledge-graph.jsonl`。
 - **自动化知识互通**：任何一个 Agent 调用 `create_entities` / `add_observations` 沉淀的硬件标定值、协议映射或架构决策，其他 Agent 均可通过 `read_graph` / `search_nodes` 秒级即时检索，彻底解决不同 Agent 会话之间的“失忆”问题。
 
-### 2. 项目级任务接力黑板 (`.agent/SESSION_STATE.md`)
+### 4. 项目级任务接力黑板 (`.agent/SESSION_STATE.md`)
 - 在项目根目录创建 `.agent/SESSION_STATE.md`（参考 `global/templates/project-SESSION_STATE.md`）。
-- **标准分工流**：
-  - **Antigravity (架构与可视化)**：负责编写方案、生成 `diagram-design` 架构图与状态机，解析多格式文档。
-  - **Codex (高速工程编码)**：根据方案快速编写算法、CAN 协议编解码与 TDD 测试。
-  - **Claude Code (深度审查与终端调试)**：在 Linux 终端执行构建、静态检查、`/code-review` 与物理安全复核。
 - 每个 Agent 在离开前将进展写入黑板，下一个接手 Agent 启动时读取黑板即可瞬间恢复全部上下文。
 
 ## 领域专用模板

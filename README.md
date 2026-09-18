@@ -121,18 +121,38 @@ The verification script checks:
 
 ## Multi-Agent Collaboration & Shared Knowledge Graph
 
-`agent-config` natively supports cross-agent collaborative development and persistent memory across **Antigravity, Claude Code, and Codex**:
+`agent-config` natively formalizes a tripartite division of labor and persistent shared memory across **Antigravity, Claude Code, and Codex**:
 
-### 1. Cross-Agent Shared Knowledge Graph (`~/.agent-memory/knowledge-graph.jsonl`)
+### 1. Tripartite Role Specialization Matrix
+
+| Agent | Core Model & Attributes | Strategic Role | Primary Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **Antigravity** | **Gemini 3.8 Flash**<br>- 1M Context Window<br>- Auto-Compaction (~135k tokens)<br>- Linux Sandbox Environment<br>- Multimodal Document Ingestion | **Reconnaissance & Global Scope**<br>*(看得广)* | - **Global Codebase Scanning**: Maps architecture topology, dependency graphs, and blast radius with 1M context.<br>- **Specification Ingestion**: Parses PDFs, DBC specs, and hardware manuals; generates publication-grade diagrams (`diagram-design`).<br>- **Long-Running Migrations**: Executes multi-module batch migrations leveraging auto-compaction and sandboxed execution.<br>- **Full-Spectrum Verification**: Runs project-wide regression testing and documentation closure. |
+| **Claude Code** | **DeepSeek V4.1 Flash**<br>- 1M Context Window<br>- Isolated Subagent Hierarchy<br>- Strict Permission Sandboxing (`Ask/Deny`) | **Deep Planning & Quality Arbiter**<br>*(想得深)* | - **Deep Task Breakdown**: Translates complex requirements into structured, low-risk `implementation_plan.md` designs.<br>- **Two-Axis Code Review**: Orchestrates parallel subagents for independent spec and standard verification (`two-axis-review`).<br>- **Deadlock & Race Condition Arbitration**: Root-cause analysis for subtle concurrency or multi-module state issues.<br>- **Hardware Safety Gatekeeper**: Strictly enforces permission boundaries before critical hardware commands. |
+| **Codex** | **DeepSeek V4.1 Flash**<br>- Fine-tuned 16B Activation<br>- High-Throughput Routing (214.4 tok/s)<br>- Tight Terminal Integration | **Surgical Precision & Fast Execution**<br>*(改得准)* | - **Surgical Implementation**: Writes dense, deterministic code with minimal diffs and zero speculative bloat.<br>- **TDD & Protocol Scaffolding**: Rapid test scaffolding, CAN DBC serialization, and SocketCAN driver logic.<br>- **Adversarial Review**: Challenges implementation assumptions and detects corner-case regressions at 200+ tok/s.<br>- **Hotfix Rapid Response**: Pinpoints single-point defects and applies verified fixes instantly. |
+
+### 2. 4-Phase Collaborative Loop
+
+Complex tasks progress through a standardized handoff pipeline:
+
+```
+[Phase 1: Reconnaissance] ──> [Phase 2: Deep Planning] ──> [Phase 3: Surgical Execution] ──> [Phase 4: Global Verification]
+      (Antigravity)                  (Claude Code)                     (Codex)                       (Antigravity)
+   Broad scans & specs          Invariants & Task Plan            Rapid TDD & Code            Integration & Closure
+   Populate Graph               Update Blackboard                 Two-Axis Cross-Review       Archive State
+```
+
+1. **Phase 1: Reconnaissance & Impact Analysis (Antigravity)**: Scans codebase dependencies, parses hardware/protocol documents, generates architectural diagrams, and persists discovered entities to `~/.agent-memory/knowledge-graph.jsonl`.
+2. **Phase 2: Deep Planning & Architecture Arbitration (Claude Code)**: Breaks down requirements, defines architectural boundaries and safety invariants, generates `implementation_plan.md`, and updates `.agent/SESSION_STATE.md`.
+3. **Phase 3: Surgical Execution & Cross-Review (Codex + Claude Code)**: Codex writes TDD unit tests and driver/algorithm code at 200+ tok/s; Claude Code runs two-axis reviews via subagents to verify standards and spec fidelity before merge.
+4. **Phase 4: Global Verification & Documentation Closure (Antigravity)**: Executes workspace-wide builds and virtual bus integration tests, verifies multi-module stability, updates ADRs and documentation, and seals the blackboard.
+
+### 3. Cross-Agent Shared Knowledge Graph (`~/.agent-memory/knowledge-graph.jsonl`)
 - Utilizes the MCP Knowledge Graph protocol (`@modelcontextprotocol/server-memory`) with all agents bound to a unified local JSONL storage path (`~/.agent-memory/knowledge-graph.jsonl`).
 - **Zero-Friction Knowledge Sync**: Hardware calibrations, protocol DBC schemas, or architectural constraints recorded by any agent via `create_entities` / `add_observations` are immediately accessible to all other agents via `read_graph` / `search_nodes`.
 
-### 2. Session State Blackboard Protocol (`.agent/SESSION_STATE.md`)
+### 4. Session State Blackboard Protocol (`.agent/SESSION_STATE.md`)
 - Provides a structured handoff template at `.agent/SESSION_STATE.md` (based on `global/templates/project-SESSION_STATE.md`).
-- **Standard Handoff Workflow**:
-  - **Antigravity (Architect)**: System design, `diagram-design` schematics, multi-format doc ingestion.
-  - **Codex (Implementer)**: High-throughput algorithm implementation, CAN serialization, TDD test scaffolding.
-  - **Claude Code (Reviewer & Debugger)**: Terminal builds, static analysis, `/code-review`, and physical safety verification.
 - Agents persist work summaries and invariant decisions into the blackboard before session handoffs, enabling incoming agents to resume instantly without context degradation.
 
 ## Domain Templates

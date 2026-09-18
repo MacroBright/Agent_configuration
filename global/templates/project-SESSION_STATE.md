@@ -8,13 +8,13 @@
 - **关联需求 / Issue**: <链接或规范文档路径>
 - **发起时间**: <YYYY-MM-DD>
 
-## 2. 流水线阶段与 Agent 职责分工
-- [ ] **Phase 1: 架构设计与图表规范** (推荐: Antigravity - 负责 5 层设计、状态机、diagram-design 出版级图表)
-- [ ] **Phase 2: 核心代码与 TDD 落地** (推荐: Codex / Antigravity - 负责算法、协议序列化、单元测试)
-- [ ] **Phase 3: 严格审查与环境调试** (推荐: Claude Code - 负责终端编译、静态检查、code-review、性能调优)
-- [ ] **Phase 4: 硬件安全与实机测试** (推荐: 人工复核批准 + 终端执行五步安全阶梯)
+## 2. 流水线阶段与 Agent 职责分工 (4-Phase Collaboration Pipeline)
+- [ ] **Phase 1: 广域侦察与影响分析** (Antigravity 主导 · 看得广 - 1M 上下文扫描、多格式文档/协议解析、架构图表与可行性评估)
+- [ ] **Phase 2: 深度规划与质量裁决** (Claude Code 主导 · 想得深 - 需求拆解、Implementation Plan、Invariants 约束、安全拍板)
+- [ ] **Phase 3: 手术级执行与交叉审查** (Codex 主导执行 · 改得准 + Claude Code 监督 - 200+ tok/s 极速单测与核心实现、双轴交叉审查)
+- [ ] **Phase 4: 全局复核与文档闭环** (Antigravity 主导 · 看得广 - 全工程构建集成、跨模块影响排查、文档与黑板归档)
 
-**当前进度**: <例如: Phase 2 进行中 (已由 Codex 完成 CAN 解析器，待 Claude Code 审查)>
+**当前进度**: <例如: Phase 3 进行中 (Codex 已完成 CAN 解析与单测，待 Claude Code 审查)>
 
 ## 3. 协作推进记录与实证 (Completed Work & Evidence)
 | 时间 | 执行 Agent | 完成内容 | 验证依据 (测试命令 / 构建结果) | Git Commit |
