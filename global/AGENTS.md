@@ -183,3 +183,20 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 3. **版本控制与工作区纪律**：
    - 跨 Agent 交接前必须保证本地工作区提交或暂存，严禁遗留未跟踪脏文件。
    - 多 Agent 并行开发不同特性时，强制使用 `using-git-worktrees` 创建独立工作树分支隔离。
+
+### 14.4 会话启动自感知与零指令接力协议 (Zero-Prompt Self-Perception Protocol)
+
+为了消除跨 Agent 交接时人工复制粘贴提示词的摩擦，所有 Agent 在会话启动或接收到任意初始触发（如用户输入 "go"、"continue"、"c"、回车、或问好）时，必须严格执行**自感知启动例程**：
+
+1. **静默探测黑板**：
+   - 优先检查当前工作区根目录是否存在 `.agent/SESSION_STATE.md`。
+2. **状态感知与职责认领**：
+   - 若存在黑板，主动读取「当前进度」与「接力指令 (Handoff to Next Agent)」。
+   - 若接力指令明确指向本 Agent，或当前未完成阶段属于本 Agent 的核心职责（Phase 1/4 -> Antigravity, Phase 2 -> Claude Code, Phase 3 -> Codex）：
+     - **禁止要求用户重复下达任务描述或复制提示词**。
+     - 首轮响应统一输出自感知前缀：
+       `[Auto-Perceived] 检测到接力黑板：当前处于 Phase X (<阶段名称>)，接手执行...`
+     - 自动通过 MCP 检索长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`) 中的关联实体。
+     - 严格继承上一个 Agent 在黑板中声明的「核心技术决策与不变量 (Invariants)」，直接推进本阶段工作。
+3. **阶段完成与主动交接**：
+   - 本阶段目标达成并验证后，当前 Agent **必须主动更新 `.agent/SESSION_STATE.md`**：勾选已完成阶段、填写实证记录与 Commit ID、追加新发现的 Invariants，并将接力指令移交给下一个 Agent。
