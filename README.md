@@ -117,6 +117,24 @@ The verification script checks:
 
 ---
 
+---
+
+## Multi-Agent Collaboration & Shared Knowledge Graph
+
+`agent-config` natively supports cross-agent collaborative development and persistent memory across **Antigravity, Claude Code, and Codex**:
+
+### 1. Cross-Agent Shared Knowledge Graph (`~/.agent-memory/knowledge-graph.jsonl`)
+- Utilizes the MCP Knowledge Graph protocol (`@modelcontextprotocol/server-memory`) with all agents bound to a unified local JSONL storage path (`~/.agent-memory/knowledge-graph.jsonl`).
+- **Zero-Friction Knowledge Sync**: Hardware calibrations, protocol DBC schemas, or architectural constraints recorded by any agent via `create_entities` / `add_observations` are immediately accessible to all other agents via `read_graph` / `search_nodes`.
+
+### 2. Session State Blackboard Protocol (`.agent/SESSION_STATE.md`)
+- Provides a structured handoff template at `.agent/SESSION_STATE.md` (based on `global/templates/project-SESSION_STATE.md`).
+- **Standard Handoff Workflow**:
+  - **Antigravity (Architect)**: System design, `diagram-design` schematics, multi-format doc ingestion.
+  - **Codex (Implementer)**: High-throughput algorithm implementation, CAN serialization, TDD test scaffolding.
+  - **Claude Code (Reviewer & Debugger)**: Terminal builds, static analysis, `/code-review`, and physical safety verification.
+- Agents persist work summaries and invariant decisions into the blackboard before session handoffs, enabling incoming agents to resume instantly without context degradation.
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)

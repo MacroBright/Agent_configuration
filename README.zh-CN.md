@@ -117,6 +117,24 @@ cd ~/agent-config
 
 ---
 
+---
+
+## 多 Agent 协同与长程知识图谱共享
+
+本系统原生支持 **Antigravity、Claude Code 与 Codex** 在同一项目上协同开发与知识互通：
+
+### 1. 跨 Agent 共享长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`)
+- 基于官方 MCP 知识图谱协议 (`@modelcontextprotocol/server-memory`)，所有 Agent 统一挂载至本地持久化文件 `~/.agent-memory/knowledge-graph.jsonl`。
+- **自动化知识互通**：任何一个 Agent 调用 `create_entities` / `add_observations` 沉淀的硬件标定值、协议映射或架构决策，其他 Agent 均可通过 `read_graph` / `search_nodes` 秒级即时检索，彻底解决不同 Agent 会话之间的“失忆”问题。
+
+### 2. 项目级任务接力黑板 (`.agent/SESSION_STATE.md`)
+- 在项目根目录创建 `.agent/SESSION_STATE.md`（参考 `global/templates/project-SESSION_STATE.md`）。
+- **标准分工流**：
+  - **Antigravity (架构与可视化)**：负责编写方案、生成 `diagram-design` 架构图与状态机，解析多格式文档。
+  - **Codex (高速工程编码)**：根据方案快速编写算法、CAN 协议编解码与 TDD 测试。
+  - **Claude Code (深度审查与终端调试)**：在 Linux 终端执行构建、静态检查、`/code-review` 与物理安全复核。
+- 每个 Agent 在离开前将进展写入黑板，下一个接手 Agent 启动时读取黑板即可瞬间恢复全部上下文。
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)

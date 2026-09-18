@@ -127,3 +127,17 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 - 多文件改动（3 个以上）前先进 Plan Mode 设计并获用户批准。
 - 改动 3 个以上文件后运行 `/code-review`。
 - 同一会话尽量只激活 1-2 个领域技能，避免意图混淆；跨领域切换建议 `/clear`。
+
+## 14. 多 Agent 协作与长程记忆接力协议 (Multi-Agent Collaboration & Shared Memory)
+
+当多个 Agent（Antigravity、Codex、Claude Code）协作同一个项目时：
+
+1. **共享长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`)**：
+   - 当分析出新的软硬件架构组件、硬件标定参数、通信协议 DBC 映射或核心排错规则时，调用 `create_entities` / `add_observations` 沉淀到图谱中。
+   - 面对不熟悉的硬件或模块，优先通过 `search_nodes` / `read_graph` 检索其他 Agent 已沉淀的图谱知识。
+2. **项目级接力黑板 (`.agent/SESSION_STATE.md`)**：
+   - 启动任务或接手项目时，优先检查项目根目录是否存在 `.agent/SESSION_STATE.md`（模板见 `global/templates/project-SESSION_STATE.md`）；若存在，主动读取该状态并无缝衔接。
+   - 完成关键开发/审查阶段后，主动将当前进展、技术决策与下一个 Agent 的交接指令更新至 `.agent/SESSION_STATE.md`。
+3. **版本控制与工作区纪律**：
+   - 跨 Agent 交接前必须保证本地工作区提交或暂存，严禁遗留未跟踪脏文件。
+   - 多 Agent 并行开发不同特性时，强制使用 `using-git-worktrees` 创建独立工作树分支隔离。

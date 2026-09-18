@@ -1,5 +1,15 @@
 {
   "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "{{HOME}}/.agent-memory/knowledge-graph.jsonl"
+      }
+    },
     "github-mcp-server": {
       "command": "docker",
       "args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"]

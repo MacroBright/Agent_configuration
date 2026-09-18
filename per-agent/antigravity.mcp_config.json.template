@@ -5,7 +5,10 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-memory"
-      ]
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "{{HOME}}/.agent-memory/knowledge-graph.jsonl"
+      }
     },
     "sequential-thinking": {
       "command": "npx",

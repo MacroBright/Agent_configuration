@@ -44,6 +44,9 @@ if [ -d "${HOME_DIR}/.codex" ]; then
   mkdir -p "${HOME_DIR}/.codex/context/templates"
   cp "$REPO_DIR/global/templates/project-AGENTS.md" "${HOME_DIR}/.codex/context/templates/project-AGENTS.md"
   cp "$REPO_DIR/global/templates/robotics-AGENTS.md" "${HOME_DIR}/.codex/context/templates/robotics-AGENTS.md"
+  cp "$REPO_DIR/global/templates/project-SESSION_STATE.md" "${HOME_DIR}/.codex/context/templates/project-SESSION_STATE.md"
+  mkdir -p "${HOME_DIR}/.agent-memory"
+  touch "${HOME_DIR}/.agent-memory/knowledge-graph.jsonl"
   say "已写入通用与机器人领域项目级模板"
   if [ ! -f "${HOME_DIR}/.codex/USER_CONTEXT.md" ]; then
     cp "$REPO_DIR/global/USER_CONTEXT.md.template" "${HOME_DIR}/.codex/USER_CONTEXT.md"
@@ -117,15 +120,18 @@ if [ -d "${HOME_DIR}/.claude" ]; then
   fi
 
   # MCP：只补缺失的 server，绝不删除既有条目
+  TMP_MCP="$(mktemp)"
+  sed -e "s|{{HOME}}|$HOME_DIR|g" "$REPO_DIR/per-agent/claude.mcp.json.template" > "$TMP_MCP"
   if [ -f "$M" ]; then
-    jq -S --slurpfile t "$REPO_DIR/per-agent/claude.mcp.json.template" \
+    jq -S --slurpfile t "$TMP_MCP" \
       '.mcpServers = ((.mcpServers // {}) * ($t[0].mcpServers // {}))' \
       "$M" > "$M.tmp" && mv "$M.tmp" "$M"
     say "已合并 $M（缺失 server 补齐，既有条目不动）"
   else
-    cp "$REPO_DIR/per-agent/claude.mcp.json.template" "$M"
+    cp "$TMP_MCP" "$M"
     say "已生成 $M"
   fi
+  rm -f "$TMP_MCP" 
   rm -f "$TMP_TPL"
 
   [ ! -e "${HOME_DIR}/.claude/CLAUDE.md" ] && ln -s "${HOME_DIR}/.codex/AGENTS.md" "${HOME_DIR}/.claude/CLAUDE.md" 2>/dev/null && say "已软链 ~/.claude/CLAUDE.md -> ~/.codex/AGENTS.md"
@@ -159,7 +165,7 @@ if [ -d "${HOME_DIR}/.gemini" ]; then
   [ -f "${HOME_DIR}/.cache/huggingface/token" ] && HF_TOKEN="$(head -n 1 "${HOME_DIR}/.cache/huggingface/token" 2>/dev/null || true)"
   HF_TOKEN="$(ask 'Hugging Face API Token' "$HF_TOKEN")"
 
-  sed -e "s|{{OBSIDIAN_VAULT_PATH}}|$VAULT_PATH|g" -e "s|{{HUGGINGFACE_API_KEY}}|$HF_TOKEN|g" \
+  sed -e "s|{{HOME}}|$HOME_DIR|g" -e "s|{{OBSIDIAN_VAULT_PATH}}|$VAULT_PATH|g" -e "s|{{HUGGINGFACE_API_KEY}}|$HF_TOKEN|g" \
       "$REPO_DIR/per-agent/antigravity.mcp_config.json.template" > "${HOME_DIR}/.gemini/config/mcp_config.json"
   say "已生成 ~/.gemini/config/mcp_config.json（已配置 7 大核心 MCP 服务）"
 

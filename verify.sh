@@ -12,7 +12,7 @@ if [ -n "$HITS" ]; then echo "!! 发现疑似密钥："; echo "$HITS"; FAIL=1; e
 
 echo ""
 echo "===== 2) 仓库完整性 ====="
-for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/project-AGENTS.md global/templates/robotics-AGENTS.md \
+for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/project-AGENTS.md global/templates/robotics-AGENTS.md global/templates/project-SESSION_STATE.md \
          skills/manifest.yaml skills/curated.txt \
          per-agent/codex.config.toml.template per-agent/claude.settings.json.template per-agent/claude.mcp.json.template per-agent/opencode.jsonc.template per-agent/antigravity.mcp_config.json.template \
          install.sh verify.sh README.md .gitignore; do
@@ -48,6 +48,13 @@ if [ -d "$HOME/.gemini" ]; then
   else
     echo "  ! Antigravity 配置文件不完整"
   fi
+fi
+
+# 跨 Agent 共享记忆检查
+if [ -f "$HOME/.agent-memory/knowledge-graph.jsonl" ]; then
+  echo "  ✓ 跨 Agent 共享长程知识图谱就位 (~/.agent-memory/knowledge-graph.jsonl)"
+else
+  echo "  ! 共享知识图谱未初始化（可运行: mkdir -p ~/.agent-memory && touch ~/.agent-memory/knowledge-graph.jsonl）"
 fi
 
 # skill 可发现：curated 白名单在激活区是否都带 SKILL.md
@@ -94,7 +101,7 @@ fi
 CM="$HOME/.claude/mcp.json"
 if [ -f "$CM" ]; then
   echo "  ✓ ~/.claude/mcp.json 存在（$(jq '.mcpServers | length' "$CM" 2>/dev/null) 个 server）"
-  DEP=$(jq -r '.mcpServers | keys[]' "$CM" 2>/dev/null | grep -E '^(memory|sequential-thinking)$' | tr '\n' ' ')
+  DEP=$(jq -r '.mcpServers | keys[]' "$CM" 2>/dev/null | grep -E '^sequential-thinking$' | tr '\n' ' ')
   if [ -n "$DEP" ]; then echo "  ! 含过时 server: $DEP（建议移除，模型内置推理与插件记忆已覆盖）"; fi
 else
   echo "  ! ~/.claude/mcp.json 缺失（可从 per-agent/claude.mcp.json.template 复制）"
