@@ -164,6 +164,14 @@ cd ~/agent-config
 - **灵活手动调度 (Manual Dispatch)**：允许用户随时打破标准 4-Phase 流程，自由调度指定 Agent 开展定向接力。
 - **闭环结构化汇报 (Debriefing)**：一轮协作结束后，收尾 Agent 自动汇总交付物、各 Agent 贡献与测试实证，形成精简报告。
 
+### 6. 协作模式显式激活指南 (Activation Instructions)
+新建文件夹默认保持纯净单 Agent 模式。只有当您明确需要多 Agent 协作时，方可通过以下两种方式之一进行项目级显式激活：
+1. **对话关键词指令（在任意 Agent 窗口中输入）**：
+   - 输入 `/collab-init` 或 `开启多 Agent 协作`；
+   - Agent 会弹出「协作启动确认卡」，向您确认任务目标与领域模板（通用模板 vs 机器人模板），获批后自动在项目根目录生成 `.agent/SESSION_STATE.md` 与 `AGENTS.md`。
+2. **终端命令行工具（在项目根目录下输入）**：
+   - 运行 `collab-init`，交互式输入目标并选择模板，秒级生成 `.agent/SESSION_STATE.md`。
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)

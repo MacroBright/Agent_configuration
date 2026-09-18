@@ -259,3 +259,24 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
   - 各参与 Agent（Antigravity / Claude Code / Codex）各自实际完成的工作、提交的 Git Commit ID 以及产出文件路径；
 - **沉淀资产与不变量 (Assets & Invariants)**：新沉淀至长程知识图谱的实体、写入项目黑板的核心技术约束；
 - **后续建议 / 未决项 (Next Steps & Open Issues)**：需要用户知晓的后续动作、潜在风险或未决细节。
+
+### 14.10 协作模式显式激活指令与脚手架例程 (Explicit Collaboration Activation Protocol)
+
+**默认行为准则：新建文件夹默认保持纯净的单 Agent 模式，绝不自作主张创建任何协作文件。**
+
+只有当用户显式发出指令，明确表达需要多 Agent 协同开发的意图时，方可触发项目级协作配置：
+
+1. **关键词触发指令 (Trigger Keywords)**：
+   - **斜杠指令**：`/collab-init`、`/collab`
+   - **自然语言指令**：`开启多 Agent 协作`、`启用协作模式`、`多 Agent 开发`、`init collab`
+2. **预审确认卡 (Pre-init Confirmation)**：
+   - 捕获到上述指令后，当前 Agent **严禁直接静默写文件**，必须先向用户输出结构化确认卡：
+     - **项目名称与任务核心目标**（根据用户输入提炼）；
+     - **领域规范模板选型**：提供选项供用户选择（如：选项 1 `(推荐)` 通用项目模板；选项 2 机器人与具身智能高可靠模板）；
+     - **拟参与 Agent 矩阵与阶段规划**。
+3. **文件级脚手架落地 (Scaffolding on Confirmation)**：
+   - 用户确认授权（或选定模板）后，Agent 自动执行项目级文件配置：
+     ① 若项目未纳入版本控制，初始化 `git init`；
+     ② 创建 `.agent/` 目录，并基于模板渲染生成 `.agent/SESSION_STATE.md`（填入当前任务目标，Phase 1 待启动）；
+     ③ 将选定的领域模板（如 `global/templates/project-AGENTS.md` 或 `robotics-AGENTS.md`）落地至项目根目录 `AGENTS.md`；
+     ④ 输出激活提示：`[Collab Activated] 本项目已正式建立多 Agent 协作黑板，后续各 Agent 将通过黑板无缝自感知接力。`

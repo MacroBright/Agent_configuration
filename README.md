@@ -162,6 +162,14 @@ Complex tasks progress through a standardized handoff pipeline:
 - **Flexible Manual Dispatch**: Users retain total authority to bypass standard 4-phase sequences and manually chain any agents as desired.
 - **Structured Debriefing**: Upon finishing a collaborative cycle, the concluding agent provides a structured debrief covering status, artifacts, test evidence, and per-agent contributions.
 
+### 6. Activation Instructions
+New directories remain in clean, single-agent mode by default. To explicitly activate multi-agent collaboration for a project, use either method:
+1. **Interactive Keyword in Chat**:
+   - Send `/collab-init` or `开启多 Agent 协作` to any agent.
+   - The agent displays a confirmation card to clarify the task scope and select a domain template (Standard vs. Robotics). Upon approval, it scaffolds `.agent/SESSION_STATE.md` and `AGENTS.md`.
+2. **Terminal CLI Utility**:
+   - Run `collab-init` in the project root to interactively provision `.agent/SESSION_STATE.md` in seconds.
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)
