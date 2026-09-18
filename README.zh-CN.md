@@ -157,6 +157,13 @@ cd ~/agent-config
 - 在项目根目录创建 `.agent/SESSION_STATE.md`（参考 `global/templates/project-SESSION_STATE.md`）。
 - 每个 Agent 在离开前将进展写入黑板，下一个接手 Agent 启动时读取黑板即可瞬间恢复全部上下文。
 
+### 5. 人在环协同治理原则 (Human-in-the-Loop Governance)
+- **按需分级 (Complexity Gating)**：仅在 0 到 1 架构构建或复杂跨模块工程中启动多 Agent 协作；日常单点修复与临时对话由单 Agent 就地解决，严禁资源浪费。
+- **预审公示 (Pre-review Gate)**：启动协作前必须输出结构化分工提纲，经用户确认或调整后方可启动。
+- **决策非擅断 (No Presumption)**：关键技术选型与权衡给出 2~4 个选项交由用户拍板，禁止擅自做主。
+- **灵活手动调度 (Manual Dispatch)**：允许用户随时打破标准 4-Phase 流程，自由调度指定 Agent 开展定向接力。
+- **闭环结构化汇报 (Debriefing)**：一轮协作结束后，收尾 Agent 自动汇总交付物、各 Agent 贡献与测试实证，形成精简报告。
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)

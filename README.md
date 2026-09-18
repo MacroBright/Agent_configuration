@@ -155,6 +155,13 @@ Complex tasks progress through a standardized handoff pipeline:
 - Provides a structured handoff template at `.agent/SESSION_STATE.md` (based on `global/templates/project-SESSION_STATE.md`).
 - Agents persist work summaries and invariant decisions into the blackboard before session handoffs, enabling incoming agents to resume instantly without context degradation.
 
+### 5. Human-in-the-Loop Governance Principles
+- **Complexity Gating**: Trigger multi-agent collaboration only for greenfield projects or complex multi-module architecture tasks. Routine fixes and single-turn queries must be handled by a single agent to avoid token waste.
+- **Pre-Collaboration Proposal**: Agents must outline objectives, role breakdowns, and expected artifacts for user review and approval before orchestrating multiple agents.
+- **Non-Presumption on Decisions**: Present 2-4 concrete choices for key architectural trade-offs, prefixing the recommended option with `(Recommended)`; never make unilateral architectural assumptions.
+- **Flexible Manual Dispatch**: Users retain total authority to bypass standard 4-phase sequences and manually chain any agents as desired.
+- **Structured Debriefing**: Upon finishing a collaborative cycle, the concluding agent provides a structured debrief covering status, artifacts, test evidence, and per-agent contributions.
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)
