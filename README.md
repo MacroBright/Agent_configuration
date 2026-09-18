@@ -170,6 +170,14 @@ New directories remain in clean, single-agent mode by default. To explicitly act
 2. **Terminal CLI Utility**:
    - Run `collab-init` in the project root to interactively provision `.agent/SESSION_STATE.md` in seconds.
 
+### 7. Specialized Tooling Matrix in Collaboration Mode
+When executing multi-agent pipelines, each agent pre-screens and activates a lean, dedicated toolkit curated from the 98 verified skills and core MCP services:
+- **Antigravity (Broad Reconnaissance)**: `diagram-design` (architecture schematics), `research` (spec reports), `domain-modeling` (entity modeling), `documentation-and-adrs` (ADR records), `verification-before-completion` (final regression gate) with MCPs `memory`, `markitdown`, `arxiv`, `obsidian`.
+- **Claude Code (Deep Planning & Arbitration)**: `writing-plans` (deep planning), `constraint-driven-development` (invariant mining), `subagent-driven-development` (review subagents), `two-axis-review` (standards/spec audit), `robotics-hardware-safety` (hardware safety ladder) with MCPs `memory`, `sequential-thinking`.
+- **Codex (Surgical Implementation & TDD)**: `test-driven-development`/`tdd` (rapid unit testing), `incremental-implementation` (minimal surgical diffs), `code-simplification` (anti-bloat refactoring), `systematic-debugging` (root-cause fixes), `doubt-driven-development` (adversarial stress-testing) with native compiler/test toolchains.
+- **Continuous Experience Crystallization**: Pitfalls and hardware calibrations are persisted to the shared graph via `add_observations`, improving accuracy and speed over time.
+- **Unconstrained Solo Mode Guarantee**: During solo development (non-collab tasks or routine queries), all agents retain full, unrestricted access to all 98 skills and MCP tools.
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)

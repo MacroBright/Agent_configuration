@@ -9,10 +9,10 @@
 - **发起时间**: <YYYY-MM-DD>
 
 ## 2. 流水线阶段与 Agent 职责分工 (4-Phase Collaboration Pipeline)
-- [ ] **Phase 1: 广域侦察与影响分析** (Antigravity 主导 · 看得广 - 1M 上下文扫描、多格式文档/协议解析、架构图表与可行性评估)
-- [ ] **Phase 2: 深度规划与质量裁决** (Claude Code 主导 · 想得深 - 需求拆解、Implementation Plan、Invariants 约束、安全拍板)
-- [ ] **Phase 3: 手术级执行与交叉审查** (Codex 主导执行 · 改得准 + Claude Code 监督 - 200+ tok/s 极速单测与核心实现、双轴交叉审查)
-- [ ] **Phase 4: 全局复核与文档闭环** (Antigravity 主导 · 看得广 - 全工程构建集成、跨模块影响排查、文档与黑板归档)
+- [ ] **Phase 1: 广域侦察与影响分析** (Antigravity 主导 · 看得广 | 专属 Skills: `diagram-design`, `research`, `domain-modeling`, `documentation-and-adrs`, `verification-before-completion`)
+- [ ] **Phase 2: 深度规划与质量裁决** (Claude Code 主导 · 想得深 | 专属 Skills: `writing-plans`, `constraint-driven-development`, `subagent-driven-development`, `two-axis-review`, `robotics-hardware-safety`)
+- [ ] **Phase 3: 手术级执行与交叉审查** (Codex 主导执行 · 改得准 + Claude Code 监督 | 专属 Skills: `test-driven-development`, `incremental-implementation`, `code-simplification`, `systematic-debugging`, `doubt-driven-development`)
+- [ ] **Phase 4: 全局复核与文档闭环** (Antigravity 主导 · 看得广 | 专属 Skills: `verification-before-completion`, `documentation-and-adrs`, `diagram-design`)
 
 > 注：上述阶段为标准推荐流水线；支持用户手动指定任意 Agent 跨阶段自由接力（如 Phase 1 调研后直接由 Codex 手术级执行）。
 

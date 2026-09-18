@@ -172,6 +172,14 @@ cd ~/agent-config
 2. **终端命令行工具（在项目根目录下输入）**：
    - 运行 `collab-init`，交互式输入目标并选择模板，秒级生成 `.agent/SESSION_STATE.md`。
 
+### 7. 协同专属 Skills & MCP 效能矩阵 (Specialized Tooling Matrix)
+在多 Agent 协作时，各 Agent 自动前置筛选并激活为其角色量身定制的专属效能工具包（精选自既有 98 个 Skills 与核心 MCP，绝不自造）：
+- **Antigravity (看得广)**：`diagram-design` (架构图表), `research` (规格研报), `domain-modeling` (领域建模), `documentation-and-adrs` (决策记录), `verification-before-completion` (终验复核) 配合 MCP `memory`, `markitdown`, `arxiv`, `obsidian`。
+- **Claude Code (想得深)**：`writing-plans` (深度方案), `constraint-driven-development` (约束挖掘), `subagent-driven-development` (审查子代理), `two-axis-review` (双轴审查), `robotics-hardware-safety` (硬件安全) 配合 MCP `memory`, `sequential-thinking`。
+- **Codex (改得准)**：`test-driven-development` / `tdd` (极速单测), `incremental-implementation` (手术刀实现), `code-simplification` (代码精简), `systematic-debugging` (根因修复), `doubt-driven-development` (对抗挑刺) 配合原生编译/测试工具链。
+- **经验沉淀飞轮**：排查出的死锁、硬件兼容性与不变量通过 `add_observations` 持续写入长程图谱，越用越好用。
+- **独立开发免受限**：单兵作战时完全不受此矩阵限制，依然拥有全系统 98 个 Skills 与全部 MCP 的完整调度权限。
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)

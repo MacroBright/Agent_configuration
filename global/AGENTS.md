@@ -280,3 +280,33 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
      ② 创建 `.agent/` 目录，并基于模板渲染生成 `.agent/SESSION_STATE.md`（填入当前任务目标，Phase 1 待启动）；
      ③ 将选定的领域模板（如 `global/templates/project-AGENTS.md` 或 `robotics-AGENTS.md`）落地至项目根目录 `AGENTS.md`；
      ④ 输出激活提示：`[Collab Activated] 本项目已正式建立多 Agent 协作黑板，后续各 Agent 将通过黑板无缝自感知接力。`
+
+### 14.11 协同专属 Skills & MCP 效能配置矩阵 (Specialized Tooling Matrix in Collaboration Mode)
+
+为确保各 Agent 在协作时最大化发挥模型与外壳优势，协作模式下实行**「精选专属配置 + 经验持续沉淀」**机制。所选技能严格源自既有 98 个高阶 Skills 库与核心 MCP 服务，绝不凭空捏造。
+
+#### 1. 智能体专属效能工具箱矩阵 (Curated Tooling Breakdown)
+
+| 智能体 (Agent) | 协同定位与主责阶段 | 专属精选 Skills (精而不多，每角色 5 选) | 专属 MCP 服务 |
+| :--- | :--- | :--- | :--- |
+| **Antigravity** | **「看得广」**<br>• Phase 1: 广域侦察 & 协议沉淀<br>• Phase 4: 全景复核 & 文档闭环 | 1. `diagram-design`：出版级系统架构图、时序图、状态转移图<br>2. `research`：多源规格预研与技术可行性论证研报<br>3. `domain-modeling`：统一领域概念、术语实体与拓扑建模<br>4. `documentation-and-adrs`：架构决策记录 (ADR) 与工程契约归档<br>5. `verification-before-completion`：全景构建复核，无实证绝不称完成 | • `memory` (沉淀/检索全局图谱)<br>• `markitdown` (秒级消化 PDF/DBC/数据手册)<br>• `arxiv` (论文与前沿算法直搜)<br>• `obsidian` (知识库双向索引) |
+| **Claude Code** | **「想得深」**<br>• Phase 2: 深度规划 & 架构裁决<br>• 监督 Phase 3: 严格代码审查 | 1. `writing-plans`：纵深需求拆解与无缝 implementation_plan 制定<br>2. `constraint-driven-development`：领域隐性约束挖掘与 Invariants 裁决<br>3. `subagent-driven-development`：派生独立并行 subagent 执行隔离审查<br>4. `two-axis-review`：规范与规格双轴严格代码审查，把关合入质量<br>5. `robotics-hardware-safety`：硬件操作五步安全阶梯与权限拒绝审计 | • `memory` (读取架构约束与历史踩坑)<br>• `sequential-thinking` (深度链式因果推演，排查死锁与状态冲突) |
+| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, gcc, cmake, socketcan) |
+
+#### 2. 轮巡前置工具筛选机制 (Phase-Aware Pre-Flight Screening)
+当轮到某个 Agent 执行对应阶段时，该 Agent 必须执行**前置筛选例程**：
+1. **感知身份与阶段**：读取 `.agent/SESSION_STATE.md`，明确本阶段主责目标；
+2. **命中专属工具库**：优先从上方对应角色的 5 个专属技能与专用 MCP 中，匹配当前任务杠杆率最高的 1~2 个工具进行激活，严禁临时发明未经检验的流程；
+3. **精准产出交付物**：在专属工具加速下，高效交付本阶段的产物（图表/方案/单测/代码/复核报告）。
+
+#### 3. 经验总结沉淀与自强化飞轮 (Continuous Learning & Experience Crystallization)
+为了实现“越用越好用，历史坑绝不踩第二遍”，各 Agent 在交接或收尾时必须执行**经验沉淀动作**：
+1. **经验提取**：提取本轮排查出的死锁诱因、硬件通信兼容性边界、特殊编译器参数或数据对齐陷阱；
+2. **双重沉淀**：
+   - **本地黑板**：追加至 `.agent/SESSION_STATE.md` 的「核心技术决策与不变量 (Invariants)」；
+   - **长程图谱**：调用 `memory` 的 `add_observations` 或 `create_entities` 沉淀至 `~/.agent-memory/knowledge-graph.jsonl`；
+3. **后续继承**：后续任何 Agent 接手或在未来新会话中启动时，优先检索此经验图谱，直接继承前人的决策沉淀。
+
+#### 4. 独立开发不受限原则 (Unconstrained Solo Mode Guarantee)
+- **明确边界**：上述专属 Skills 与 MCP 矩阵**仅在多 Agent 协同接力模式（存在 `.agent/SESSION_STATE.md`）下作为主责加速指引**。
+- **单兵作战零限制**：当任一 Agent 处于独立开发模式（普通项目或日常临时对话）时，**完全不受上述专属矩阵限制**，各 Agent 依然拥有全局 98 个 Skills 以及系统中安装的所有 MCP 工具的全部调度权限，随时胜任端到端全流程开发。
