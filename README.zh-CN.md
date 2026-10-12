@@ -180,6 +180,12 @@ cd ~/agent-config
 - **经验沉淀飞轮**：排查出的死锁、硬件兼容性与不变量通过 `add_observations` 持续写入长程图谱，越用越好用。
 - **独立开发免受限**：单兵作战时完全不受此矩阵限制，依然拥有全系统 98 个 Skills 与全部 MCP 的完整调度权限。
 
+### 8. 融合开源生态核心设计 (Architecture Synthesis)
+参考业界优秀的 Agent 协同项目，本架构深度吸收了以下前沿设计思想，兼具工业级鲁棒性与轻量化特性：
+1. **认知反思模型 (源自 Hindsight)**：摒弃粗放的文本堆砌，建立 `Retain-Recall-Reflect` 三动词循环。遇到死锁或架构纠偏时，强制升华为 `{触发场景 → 踩坑诱因 → 永久法则}` 结构化反思实体沉淀至长程图谱，受 Token 预算约束精准召回。
+2. **工单原子锁与熔断安全带 (源自 Paperclip)**：黑板子任务状态细化为 `[PENDING]` $\rightarrow$ `[LOCKED: Agent]` $\rightarrow$ `[REVIEWING]` $\rightarrow$ `[COMPLETED]`，杜绝多 Agent 任务冲突；单轮协作引入默认 5 轮迭代上限，超限自动熔断并上报“人类董事会 (Board)”。
+3. **工位拓扑与终端快照 (源自 OpenRig)**：确立 `Seat 1 (Recon)`、`Seat 2 (Lead)`、`Seat 3 (Coder)` 稳定工位边界；提供轻量命令行工具 `collab-tmux`，支持在终端一键唤醒多 Agent 协同分屏并生成现场快照 (`collab-tmux snapshot`)。
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)

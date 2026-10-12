@@ -310,3 +310,43 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 #### 4. 独立开发不受限原则 (Unconstrained Solo Mode Guarantee)
 - **明确边界**：上述专属 Skills 与 MCP 矩阵**仅在多 Agent 协同接力模式（存在 `.agent/SESSION_STATE.md`）下作为主责加速指引**。
 - **单兵作战零限制**：当任一 Agent 处于独立开发模式（普通项目或日常临时对话）时，**完全不受上述专属矩阵限制**，各 Agent 依然拥有全局 98 个 Skills 以及系统中安装的所有 MCP 工具的全部调度权限，随时胜任端到端全流程开发。
+
+### 14.12 认知反思模型与高阶规则升华 (Retain-Recall-Reflect Protocol · 借鉴 Hindsight)
+
+摒弃无意义流水账式的记忆堆砌，跨 Agent 记忆交互遵循认知三动词机制：
+
+1. **Retain (事实留存)**：各 Agent 完成具体工程改动后，仅提取核心架构实体、通信协议定义与标定参数，禁止冗余会话碎片入库；
+2. **Recall (有预算召回)**：跨 Agent 检索长程图谱时严格实施 Token 预算控制（单次检索注入不超过 800 tokens），优先检索高权重的“反思规则（Reflections）”与“安全不变量（Invariants）”，避免无用历史稀释上下文；
+3. **Reflect (反思升华)**：每次遇到隐蔽 Bug、死锁或人为纠偏时，收尾 Agent 必须在 Phase 4（或 Claude 在 Phase 2）将问题升华为标准结构化反思实体：
+   - **触发场景 (Trigger)**：在何种环境或操作序列下暴露；
+   - **踩坑诱因 (Gotcha)**：根因究竟是时序竞态、对齐错误还是未捕获异常；
+   - **永久法则 (Crystallized Invariant)**：提炼出后续全队必须无条件遵从的高阶设计规则。
+   - 升华出的法则同步持久化至 `~/.agent-memory/knowledge-graph.jsonl` 与黑板 Section 4。
+
+### 14.13 工单原子锁与协同熔断安全带 (Task Locking & Iteration Safeguard · 借鉴 Paperclip)
+
+为防止多 Agent 协作时任务归属模糊、甚至陷入互相修改的死循环，引入工单原子锁与迭代熔断：
+
+1. **工单原子签出状态机 (Atomic Task Checkout)**：
+   - 黑板中的每一个分解子任务必须标明当前状态与归属：
+     - `[PENDING]`：待认领；
+     - `[LOCKED: <Agent>]`：已由特定 Agent 原子认领，其他 Agent 严禁跨越修改该范围代码；
+     - `[REVIEWING: <Agent>]`：正在等待审查 Agent 验收；
+     - `[COMPLETED]`：实证通过并合入主分支。
+2. **迭代轮次硬熔断 (Iteration Budget & Runaway Guard)**：
+   - 项目黑板中强制维护 `迭代轮次: N / Max` 计数器（默认上限为 5 轮）；
+   - 若 Codex 与 Claude Code 在某单点特性上反复修改、审查打回超过 5 轮仍未通过测试，**强制触发熔断机制**：
+     - 立即将任务标记为 `[SUSPENDED: ESCALATED]`；
+     - 停止自动流转，向用户“董事会 (Board)”发出求助信号并附上分歧点，等待人类介入裁决。
+
+### 14.14 工位拓扑与终端现场快照机制 (Seat Topology & Workspace Snapshot · 借鉴 OpenRig)
+
+为了规范多终端会话并避免终端蔓延（Terminal Sprawl），建立工位拓扑与现场快照支持：
+
+1. **工位命名与职责边界 (Seat Topology)**：
+   - `Seat 1 (Recon)`：Antigravity，负责宏观扫描、协议解析、全景复核与文档沉淀；
+   - `Seat 2 (Lead)`：Claude Code，负责需求拆解、Invariants 裁决与双轴审查；
+   - `Seat 3 (Coder)`：Codex，负责 200+ tok/s 极速 TDD 单元测试与核心算法手术刀实现。
+2. **终端现场快照支持 (Workspace Snapshots)**：
+   - 支持通过 `collab-tmux` 工具为项目分配独立的后台 `tmux` 会话与专属窗口（`claude`, `codex`）；
+   - 支持跨天或暂停时执行快照保存（保存终端当前上下文与运行状态），下次一键原地恢复。

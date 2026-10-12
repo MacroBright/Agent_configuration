@@ -178,6 +178,12 @@ When executing multi-agent pipelines, each agent pre-screens and activates a lea
 - **Continuous Experience Crystallization**: Pitfalls and hardware calibrations are persisted to the shared graph via `add_observations`, improving accuracy and speed over time.
 - **Unconstrained Solo Mode Guarantee**: During solo development (non-collab tasks or routine queries), all agents retain full, unrestricted access to all 98 skills and MCP tools.
 
+### 8. Architectural Synthesis from Open-Source Ecosystem
+Incorporating proven design patterns from leading agent collaboration projects, this system integrates:
+1. **Cognitive Reflection Protocol (inspired by Hindsight)**: Replaces unstructured logs with a `Retain-Recall-Reflect` cognitive loop. Hard bugs and architectural deadlocks are distilled into `{Trigger → Gotcha → Crystallized Invariant}` entities in the shared graph, recalled strictly under token budgets.
+2. **Task Atomic Locks & Iteration Guard (inspired by Paperclip)**: Subtasks cycle through `[PENDING]` $\rightarrow$ `[LOCKED: Agent]` $\rightarrow$ `[REVIEWING]` $\rightarrow$ `[COMPLETED]` to prevent conflicting edits; a default 5-iteration budget acts as a runaway circuit breaker, automatically escalating intractable deadlocks to the human Board.
+3. **Seat Topology & Workspace Snapshots (inspired by OpenRig)**: Assigns deterministic roles (`Seat 1 Recon`, `Seat 2 Lead`, `Seat 3 Coder`) and includes the `collab-tmux` utility for zero-friction terminal orchestration and workspace snapshot persistence (`collab-tmux snapshot`).
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)
