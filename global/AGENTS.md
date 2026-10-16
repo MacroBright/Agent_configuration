@@ -60,13 +60,38 @@
 
 常用域：具身智能（ROS2 包结构、URDF/launch、仿真先于真机、ONNX 部署）、嵌入式（交叉编译、CMake）、AI 推理（config 分离、混合精度、checkpoint 管理）、仿真（记录仿真与真机差异假设）。具体域约定下沉到项目 AGENTS.md（机器人与具身智能项目推荐使用 global/templates/robotics-AGENTS.md 模板）。
 
-## 6. 编码规则（Coding Rules）
+## 6. 编码与单元测试规范（Coding & Testing Standards）
 
-全局只定一条：
-- Respect existing project formatters, linters, compiler settings, and CI rules.
-- 不要在全局层面强加格式化/构建策略；除非用户明确要求或确属必要，不引入全局格式或工具链改动。
+全局代码实现与单元测试必须严格遵循以下语言基准规范。在已有明确既定 linter/CI 配置的遗留项目中，尊重其既定约定；所有新编写、新增模块或重构代码，默认严格遵循：
 
-项目具体配置（clang-format、black + isort、`-Werror`、CMake、交叉编译、Docker、关键路径禁动态分配等）由各项目 AGENTS.md 规定。环境可复现优先：Docker、依赖版本锁死、requirements/pyproject 落地。
+### 6.1 Python 语言规范
+- **编码规范**：严格遵循 [PEP 8 规范 (Python PEP 8 Coding Style)](https://pep8.org/)。
+  - 缩进与排版：使用 4 个空格缩进，严禁空格与制表符混用；代码行建议不超过 79 字符，文档字符串/注释建议不超过 72 字符（或遵从项目 black/ruff 既定配置）；顶层函数与类定义之间空两行，类内方法定义之间空一行。
+  - 导入规范：按标准库、第三方库、本地模块分三组空行隔离，优先使用绝对导入。
+  - 命名规范：模块与包名全小写加下划线 (`snake_case`)；类名采用大驼峰 (`CamelCase`)；函数、方法及变量采用 `snake_case`；常量全大写下划线 (`UPPER_CASE`)；非公开成员使用前置单下划线 (`_private`)。
+  - 工具链协同：推荐在项目根目录配置 `flake8`、`black`、`ruff`、`isort` 维持格式一致性。
+- **单元测试规范**：严格遵循 [pytest 规范](http://www.pytest.org/en/latest/)。
+  - 文件与用例命名：测试文件命名为 `test_*.py` 或 `*_test.py`；测试函数以 `test_*()` 命名；测试类以 `Test*` 命名（且禁止包含 `__init__`）。
+  - 断言自省：直接使用 Python 原生 `assert` 表达式，充分利用 pytest 详细的断言失败自省上下文；严禁无断言测试。
+  - Fixture 与参数化：使用 `@pytest.fixture` 实现清晰的依赖注入与 Setup/Teardown 资源管理；使用 `@pytest.mark.parametrize` 覆盖参数化多边界与等价类用例。
+  - 目录组织：单测代码统一放置于 `tests/` 目录，禁止侵入业务源码。
+
+### 6.2 C++ 及其他语言规范
+- **编码规范**：严格遵循 [Google C++ 编程规范 (Google C++ Coding Guidelines)](http://google.github.io/styleguide/cppguide.html)。
+  - 头文件与自包含：所有 `.h` 头文件必须自包含，使用标准宏保护（`#define FOO_BAR_H_`）或 `#pragma once`；包含顺序严格遵循：相关头文件 $\rightarrow$ C 系统文件 $\rightarrow$ C++ 标准库文件 $\rightarrow$ 第三方库头文件 $\rightarrow$ 本项目头文件。
+  - 作用域与命名空间：命名空间全小写；严禁在头文件中使用 `using namespace <foo>;` 污染作用域；实现文件中推荐使用匿名命名空间隔离内部符号。
+  - 命名规范：类型与类名使用大驼峰 (`CamelCase`)；函数名使用大驼峰 (`MyFunction()`) 或小驼峰；变量与形参使用 `snake_case`；类私有/保护成员变量必须以单下划线结尾 (`member_variable_`)；常量与枚举值使用 `k` 前缀大驼峰 (`kConstantName`)；宏定义全大写下划线 (`MACRO_NAME`)。
+  - 资源与内存管理：拥抱现代 C++ (C++17/20)，严格遵循 RAII；优先使用智能指针 (`std::unique_ptr` / `std::shared_ptr`)，杜绝裸 `new`/`delete`；实时高频循环内禁止动态内存分配。
+  - 工具链协同：推荐在项目根目录维护 `.clang-format`（配置 `BasedOnStyle: Google`）。
+- **单元测试规范**：严格遵循 [Googletest Primer (GTest)](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)。
+  - 测试用例组织：独立测试使用 `TEST(TestSuiteName, TestName)` 宏；具备共享环境的测试使用继承自 `testing::Test` 的夹具并配合 `TEST_F(TestFixtureName, TestName)`。
+  - 断言机制规范：非致命检查使用 `EXPECT_*` 系列宏（如 `EXPECT_EQ`, `EXPECT_TRUE`, `EXPECT_NEAR`），失败后继续后续测试；关键前置条件检查使用 `ASSERT_*` 系列宏（如 `ASSERT_NE(ptr, nullptr)`），失败后立即终止当前测试用例执行，防止段错误。
+  - 浮点与异常验证：浮点数值比较必须使用 `EXPECT_FLOAT_EQ`、`EXPECT_DOUBLE_EQ` 或 `EXPECT_NEAR`；异常抛出验证使用 `EXPECT_THROW` 与 `EXPECT_NO_THROW`。
+  - 构建系统集成：通过 `CMakeLists.txt` 集成 GoogleTest（`find_package(GTest REQUIRED)` 或 `FetchContent`），启用 `enable_testing()` 并通过 `gtest_discover_tests()` 接入 CTest 统一测试套件。
+
+### 6.3 既有项目与环境可复现性
+- **尊重项目既有 CI**：在已建立特定格式或编译约束的既有项目中，尊重其既有 linter/CI 设置；新代码与新增模块严格按照上述 PEP 8 + pytest 与 Google C++ + GTest 执行。
+- **环境可复现优先**：依赖必须通过 requirements.txt / pyproject.toml / CMakeLists.txt / Dockerfile 明确锁定版本。
 
 ## 7. 调试规则（Debugging Rules）
 
@@ -140,7 +165,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 | :--- | :--- | :--- | :--- |
 | **Antigravity** | **Gemini 3.8 Flash**<br>- 1M 巨量上下文<br>- 自动上下文压缩 (~135k 触发)<br>- 原生 Linux 沙箱<br>- 多模态图文解析 (DeepSWE 71.0%) | **「看得广」**<br>广域侦察与全景影响分析 | - **全局依赖扫描**：利用 1M 上下文摸清大型代码库拓扑、跨模块调用与潜在破坏半径。<br>- **多格式规范预研**：消化 PDF 论文、硬件手册、CAN DBC、通信协议，生成出版级架构图与状态机 (`diagram-design`)。<br>- **长程连续迁移**：利用沙箱与自动压缩，执行耗时跨模块重构、环境脚手架初始化与批量迁移。<br>- **全局回归复核**：最终破坏性排查、全景构建验证与文档闭环。 |
 | **Claude Code** | **DeepSeek V4.1 Flash**<br>- 1M 上下文窗口<br>- 严密独立 Subagent 体系<br>- 严格权限控制 (`Ask/Deny`) | **「想得深」**<br>深度规划与质量安全裁决 | - **需求拆解与架构规划**：从复杂需求到落地设计，识别领域隐性约束，编写结构化 `implementation_plan.md`。<br>- **独立双轴审查**：派生并行 subagent 执行规范与规格审查 (`two-axis-review`)，严格把关质量与边界。<br>- **复杂系统仲裁**：排查多组件交互死锁、隐蔽竞态与状态机冲突。<br>- **安全与关键操作把关**：对硬件操作、不可逆修改实施最高级别安全审计。 |
-| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动测试、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
+| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动与业务测试（Python 严格遵循 PEP 8 + pytest，C++ 严格遵循 Google C++ 规范 + GTest）、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
 
 ### 14.2 四阶段协同接力闭环 (4-Phase Collaborative Loop)
 
@@ -164,7 +189,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
    - 更新项目根目录接力黑板 `.agent/SESSION_STATE.md`，明确 Task Breakdown 与交接目标。
 
 3. **Phase 3: 手术级执行与交叉审查 (Surgical Execution & Cross-Review · Codex 主导 + Claude Code 监督)**
-   - **执行 (Codex)**：以 200+ tok/s 极速高密度编写 TDD 单元测试与驱动/算法代码，手术刀式精准落地。
+   - **执行 (Codex)**：以 200+ tok/s 极速高密度编写符合规范的 TDD 单元测试（Python: PEP 8 + pytest, C++: Google Style + GTest）与驱动/算法代码，手术刀式精准落地。
    - **审查 (Claude Code)**：派生独立 subagent 进行规范与规格双轴审查 (`two-axis-review`)，对抗性审查与静态检查无误后合入分支。
 
 4. **Phase 4: 全局复核与文档闭环 (Global Verification & Closure · Antigravity 主导)**
@@ -291,7 +316,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 | :--- | :--- | :--- | :--- |
 | **Antigravity** | **「看得广」**<br>• Phase 1: 广域侦察 & 协议沉淀<br>• Phase 4: 全景复核 & 文档闭环 | 1. `diagram-design`：出版级系统架构图、时序图、状态转移图<br>2. `research`：多源规格预研与技术可行性论证研报<br>3. `domain-modeling`：统一领域概念、术语实体与拓扑建模<br>4. `documentation-and-adrs`：架构决策记录 (ADR) 与工程契约归档<br>5. `verification-before-completion`：全景构建复核，无实证绝不称完成 | • `memory` (沉淀/检索全局图谱)<br>• `markitdown` (秒级消化 PDF/DBC/数据手册)<br>• `arxiv` (论文与前沿算法直搜)<br>• `obsidian` (知识库双向索引) |
 | **Claude Code** | **「想得深」**<br>• Phase 2: 深度规划 & 架构裁决<br>• 监督 Phase 3: 严格代码审查 | 1. `writing-plans`：纵深需求拆解与无缝 implementation_plan 制定<br>2. `constraint-driven-development`：领域隐性约束挖掘与 Invariants 裁决<br>3. `subagent-driven-development`：派生独立并行 subagent 执行隔离审查<br>4. `two-axis-review`：规范与规格双轴严格代码审查，把关合入质量<br>5. `robotics-hardware-safety`：硬件操作五步安全阶梯与权限拒绝审计 | • `memory` (读取架构约束与历史踩坑)<br>• `sequential-thinking` (深度链式因果推演，排查死锁与状态冲突) |
-| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, gcc, cmake, socketcan) |
+| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件（Python: pytest；C++: Googletest）<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, googletest, gcc, cmake, socketcan) |
 
 #### 2. 轮巡前置工具筛选机制 (Phase-Aware Pre-Flight Screening)
 当轮到某个 Agent 执行对应阶段时，该 Agent 必须执行**前置筛选例程**：

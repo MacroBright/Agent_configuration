@@ -184,6 +184,21 @@ Incorporating proven design patterns from leading agent collaboration projects, 
 2. **Task Atomic Locks & Iteration Guard (inspired by Paperclip)**: Subtasks cycle through `[PENDING]` $\rightarrow$ `[LOCKED: Agent]` $\rightarrow$ `[REVIEWING]` $\rightarrow$ `[COMPLETED]` to prevent conflicting edits; a default 5-iteration budget acts as a runaway circuit breaker, automatically escalating intractable deadlocks to the human Board.
 3. **Seat Topology & Workspace Snapshots (inspired by OpenRig)**: Assigns deterministic roles (`Seat 1 Recon`, `Seat 2 Lead`, `Seat 3 Coder`) and includes the `collab-tmux` utility for zero-friction terminal orchestration and workspace snapshot persistence (`collab-tmux snapshot`).
 
+---
+
+## Coding & Testing Standards
+
+All code generation, editing, and test authoring across agents must adhere to the following baseline engineering standards (in legacy codebases with established CI/Linter rules, existing project conventions take precedence; all new code and refactors default strictly to these standards):
+
+1. **Python Guidelines & Unit Testing**:
+   - **Coding Style**: Strict adherence to [Python PEP 8 Coding Style](https://pep8.org/) (4 spaces per indentation level, code lines $\le 79$ characters, docstrings/comments $\le 72$ characters, clear `snake_case` functions/variables and `CamelCase` classes, standard import grouping via `flake8`/`black`/`ruff`).
+   - **Unit Testing**: Strict adherence to [pytest Standards](http://www.pytest.org/en/latest/) (test discovery via `test_*.py`, native `assert` failure introspection without boilerplate assert helpers, `@pytest.fixture` for modular setup/teardown and dependency injection, `@pytest.mark.parametrize` for boundary coverage).
+2. **C++ & Other Languages Guidelines & Unit Testing**:
+   - **Coding Style**: Strict adherence to [Google C++ Coding Guidelines](http://google.github.io/styleguide/cppguide.html) (self-contained headers, standardized include ordering, RAII memory management with smart pointers, elimination of raw `new`/`delete`, `kConstant` naming for constants, `member_variable_` trailing underscores, `.clang-format` based on Google style).
+   - **Unit Testing**: Strict adherence to [Googletest Primer (GTest)](https://github.com/google/googletest/blob/master/googletest/docs/primer.md) (`TEST` for independent tests and `TEST_F` with `testing::Test` fixtures for shared state, non-fatal `EXPECT_*` checks vs. fatal `ASSERT_*` guards, `EXPECT_NEAR`/`EXPECT_FLOAT_EQ` for floating-point comparisons, integrated with CTest via CMake `gtest_discover_tests`).
+
+---
+
 ## Domain Templates
 
 ### Standard Project (`global/templates/project-AGENTS.md`)

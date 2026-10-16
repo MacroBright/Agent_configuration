@@ -39,6 +39,7 @@
 ## 2. 硬件与嵌入式标准 (Robotics & Embedded Standards)
 
 ### 2.1 嵌入式 C/C++ 与 CAN 总线
+- **编码与测试规范**：遵循 [Google C++ 编程规范](http://google.github.io/styleguide/cppguide.html)；单元测试遵循 [Googletest Primer](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)。
 - **绝对零动态分配**：高频控制循环（>100Hz）内部严禁 `malloc`、`new`、`std::vector::resize` 等可能引发堆抖动的操作。
 - **协议完整性检查**：反序列化 CAN 报文前，强制校验 Frame ID、DLC（数据长度代码）以及 CRC/校验和；明确标注大小端序（Endianness）。
 - **通信心跳看门狗**：通信超时超过 50ms 必须自动禁用电机力矩输出，进入安全阻尼/抱闸状态。
@@ -54,6 +55,7 @@
 - **奇异点防护**：运动学逆解在接近奇异点时必须启用阻尼最小二乘（DLS）或零空间投影，防止关节角速度瞬时发散。
 
 ### 2.4 具身智能与 LeRobot (昇腾 Ascend NPU)
+- **Python 编码与测试规范**：模型推理、策略包装与评估脚本遵循 [PEP 8 规范](https://pep8.org/)；单元测试遵循 [pytest 规范](http://www.pytest.org/en/latest/)。
 - **推理线程隔离**：AI 模型推理必须运行在独立异步工作线程/进程中，严禁神经网络计算延迟阻塞实时底层控制循环。
 - **动作块平滑滤波 (Action Smoothing)**：对策略输出的 Action Chunks 应用低通滤波或三次样条插值，避免机械机构高频抖动受损。
 - **安全包络拦截器 (Safety Envelope)**：AI 生成动作必须经过确定性工作空间范围与速度上限安全层后方可下发执行。
@@ -75,14 +77,14 @@
 
 - **开发语言/环境**：<C++17 / Python 3.11 / ROS2 Humble / PyTorch (CANN)>
 - **构建命令**：<例如 `colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release`>
-- **测试命令**：<例如 `colcon test && colcon test-result --all`>
+- **测试命令**：<例如 `colcon test && colcon test-result --all`、`pytest tests/`、`ctest --output-on-failure`>
 - **虚拟 CAN 启动**：`sudo ip link add dev vcan0 type vcan && sudo ip link set up vcan0`
 
 ---
 
 ## 5. 完成标准 (Definition of Done)
 
-- [ ] 核心协议与算法具备单元测试（TDD 优先）。
+- [ ] 核心协议与算法具备单元测试（Python: pytest, C++: Googletest，TDD 优先）。
 - [ ] 控制热循环无动态内存分配，无内存泄漏与死锁隐患。
 - [ ] 具备完整的超时看门狗与急停（E-Stop）响应机制。
 - [ ] 针对关键架构与通信流提供了基于 `diagram-design` 的架构图或状态机图。

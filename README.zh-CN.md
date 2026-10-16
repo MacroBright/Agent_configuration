@@ -186,6 +186,21 @@ cd ~/agent-config
 2. **工单原子锁与熔断安全带 (源自 Paperclip)**：黑板子任务状态细化为 `[PENDING]` $\rightarrow$ `[LOCKED: Agent]` $\rightarrow$ `[REVIEWING]` $\rightarrow$ `[COMPLETED]`，杜绝多 Agent 任务冲突；单轮协作引入默认 5 轮迭代上限，超限自动熔断并上报“人类董事会 (Board)”。
 3. **工位拓扑与终端快照 (源自 OpenRig)**：确立 `Seat 1 (Recon)`、`Seat 2 (Lead)`、`Seat 3 (Coder)` 稳定工位边界；提供轻量命令行工具 `collab-tmux`，支持在终端一键唤醒多 Agent 协同分屏并生成现场快照 (`collab-tmux snapshot`)。
 
+---
+
+## 代码编写与单元测试规范
+
+跨 Agent 代码生成与重构严格遵循以下行业权威基准（既有成熟项目在不冲突前提下尊重既有 CI/Linter 约定，新代码默认无条件遵循）：
+
+1. **Python 代码与测试规范**：
+   - **编码规范**：遵循 [Python PEP 8 Coding Style](https://pep8.org/)，代码缩进 4 空格、命名规范清晰、导入分层隔离，推荐搭配 `flake8`/`black`/`ruff` 检查。
+   - **单元测试**：遵循 [pytest 官方规范](http://www.pytest.org/en/latest/)，测试文件统一为 `test_*.py`，直接使用原生 `assert` 表达式自省，利用 `@pytest.fixture` 隔离状态与 `@pytest.mark.parametrize` 覆盖边界用例。
+2. **C++ 及其他代码与测试规范**：
+   - **编码规范**：遵循 [Google C++ Coding Guidelines](http://google.github.io/styleguide/cppguide.html)，头文件自包含、命名规范（类 `CamelCase`、变量 `snake_case`、私有成员 `_` 后缀、常量 `kConstant`）、RAII 智能指针内存管理、禁裸 `new`/`delete`。
+   - **单元测试**：遵循 [Googletest Primer (GTest)](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)，使用 `TEST` / `TEST_F` 组织测试套件，`EXPECT_*` 非致命检查与 `ASSERT_*` 致命断言区分使用，浮点比较使用 `EXPECT_NEAR`/`EXPECT_FLOAT_EQ`，通过 CMake `gtest_discover_tests` 接入 CTest。
+
+---
+
 ## 领域专用模板
 
 ### 通用项目模板 (`global/templates/project-AGENTS.md`)
