@@ -193,9 +193,15 @@ All code generation, editing, and test authoring across agents must adhere to th
 1. **Python Guidelines & Unit Testing**:
    - **Coding Style**: Strict adherence to [Python PEP 8 Coding Style](https://pep8.org/) (4 spaces per indentation level, code lines $\le 79$ characters, docstrings/comments $\le 72$ characters, clear `snake_case` functions/variables and `CamelCase` classes, standard import grouping via `flake8`/`black`/`ruff`).
    - **Unit Testing**: Strict adherence to [pytest Standards](http://www.pytest.org/en/latest/) (test discovery via `test_*.py`, native `assert` failure introspection without boilerplate assert helpers, `@pytest.fixture` for modular setup/teardown and dependency injection, `@pytest.mark.parametrize` for boundary coverage).
-2. **C++ & Other Languages Guidelines & Unit Testing**:
+2. **C++ Guidelines & Unit Testing**:
    - **Coding Style**: Strict adherence to [Google C++ Coding Guidelines](http://google.github.io/styleguide/cppguide.html) (self-contained headers, standardized include ordering, RAII memory management with smart pointers, elimination of raw `new`/`delete`, `kConstant` naming for constants, `member_variable_` trailing underscores, `.clang-format` based on Google style).
    - **Unit Testing**: Strict adherence to [Googletest Primer (GTest)](https://github.com/google/googletest/blob/master/googletest/docs/primer.md) (`TEST` for independent tests and `TEST_F` with `testing::Test` fixtures for shared state, non-fatal `EXPECT_*` checks vs. fatal `ASSERT_*` guards, `EXPECT_NEAR`/`EXPECT_FLOAT_EQ` for floating-point comparisons, integrated with CTest via CMake `gtest_discover_tests`).
+3. **Other Programming Languages (Respective Google Style Guides)**:
+   - Other languages do NOT blindly adopt C++ conventions; each adheres strictly to its own corresponding Google Style Guide (refer to [Google Open Source Style Guides (zh)](https://github.com/zh-google-styleguide/zh-google-styleguide) and [Official Google Style Guides](https://google.github.io/styleguide/)):
+     - **C**: Google C/C++ subset style (self-contained headers, boundary defense, memory safety, clear error return codes).
+     - **Shell / Bash**: [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) (`#!/usr/bin/env bash`, `set -euo pipefail`, mandatory `local` variables in functions, robust quoting `"$VAR"`).
+     - **TypeScript / JavaScript**: [Google TypeScript/JavaScript Style Guide](https://google.github.io/styleguide/tsguide.html) (explicit types, `const` over `let`, no `var`, no indiscriminate `any`).
+     - **Go and others**: Respective Google Style Guides and idiomatic linters (`gofmt`, etc.).
 
 ---
 

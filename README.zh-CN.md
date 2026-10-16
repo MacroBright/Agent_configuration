@@ -195,9 +195,15 @@ cd ~/agent-config
 1. **Python 代码与测试规范**：
    - **编码规范**：遵循 [Python PEP 8 Coding Style](https://pep8.org/)，代码缩进 4 空格、命名规范清晰、导入分层隔离，推荐搭配 `flake8`/`black`/`ruff` 检查。
    - **单元测试**：遵循 [pytest 官方规范](http://www.pytest.org/en/latest/)，测试文件统一为 `test_*.py`，直接使用原生 `assert` 表达式自省，利用 `@pytest.fixture` 隔离状态与 `@pytest.mark.parametrize` 覆盖边界用例。
-2. **C++ 及其他代码与测试规范**：
+2. **C++ 代码与测试规范**：
    - **编码规范**：遵循 [Google C++ Coding Guidelines](http://google.github.io/styleguide/cppguide.html)，头文件自包含、命名规范（类 `CamelCase`、变量 `snake_case`、私有成员 `_` 后缀、常量 `kConstant`）、RAII 智能指针内存管理、禁裸 `new`/`delete`。
    - **单元测试**：遵循 [Googletest Primer (GTest)](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)，使用 `TEST` / `TEST_F` 组织测试套件，`EXPECT_*` 非致命检查与 `ASSERT_*` 致命断言区分使用，浮点比较使用 `EXPECT_NEAR`/`EXPECT_FLOAT_EQ`，通过 CMake `gtest_discover_tests` 接入 CTest。
+3. **其余编程语言规范（各自对应之 Google 编程规范）**：
+   - 其余语言一律参考并严格遵循各自对应的谷歌编程规范（统一参考 [Google 开源项目风格指南中文版](https://github.com/zh-google-styleguide/zh-google-styleguide) 与 [Google Style Guides 官方索引](https://google.github.io/styleguide/)），绝非盲目套用 C++ 规范：
+     - **C 语言**：遵循 Google C 风格规范（头文件自包含、函数/结构体命名明确、严格指针判空与边界防护、禁内存泄漏）；
+     - **Shell / Bash**：遵循 [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html)（`set -euo pipefail` 防御模式、函数内变量**强制 `local`**、严格双引号变量防护）；
+     - **TypeScript / JavaScript**：遵循 [Google TypeScript/JavaScript Style Guide](https://google.github.io/styleguide/tsguide.html)（显式类型、`const` 优先、禁 `var` 与滥用 `any`）；
+     - **Go 语言及其他**：遵循各自对应的 Google 官方风格与标准格式化工具。
 
 ---
 

@@ -11,7 +11,8 @@
 - 语言/框架：<如 C++17 / Python 3.11 / ROS2 humble>
 - 编码与测试基准规范（全局继承）：
   - Python: [PEP 8 规范](https://pep8.org/)，单元测试使用 [pytest](http://www.pytest.org/en/latest/)
-  - C++ 及其他: [Google C++ 编程规范](http://google.github.io/styleguide/cppguide.html)，单元测试使用 [Googletest](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)
+  - C++: [Google C++ 编程规范](http://google.github.io/styleguide/cppguide.html)，单元测试使用 [Googletest](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)
+  - 其余语言（C/Shell/TypeScript/Go等）: 遵循各自对应的 [Google 编程规范](https://github.com/zh-google-styleguide/zh-google-styleguide)
 - 构建命令：<如 `mkdir -p build && cd build && cmake .. && make -j`>
 - 测试命令：<如 `pytest tests/`、`ctest --output-on-failure`、`make test`>
 - 环境可复现：<Dockerfile / requirements.txt / pyproject.toml / 依赖版本锁>

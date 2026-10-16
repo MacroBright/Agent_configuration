@@ -39,7 +39,7 @@
 ## 2. 硬件与嵌入式标准 (Robotics & Embedded Standards)
 
 ### 2.1 嵌入式 C/C++ 与 CAN 总线
-- **编码与测试规范**：遵循 [Google C++ 编程规范](http://google.github.io/styleguide/cppguide.html)；单元测试遵循 [Googletest Primer](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)。
+- **编码与测试规范**：C++ 严格遵循 [Google C++ 编程规范](http://google.github.io/styleguide/cppguide.html)，C 遵循 Google C 规范；单元测试遵循 [Googletest Primer](https://github.com/google/googletest/blob/master/googletest/docs/primer.md)；底层 Shell 脚本遵循 [Google Shell 编程规范](https://google.github.io/styleguide/shellguide.html)。
 - **绝对零动态分配**：高频控制循环（>100Hz）内部严禁 `malloc`、`new`、`std::vector::resize` 等可能引发堆抖动的操作。
 - **协议完整性检查**：反序列化 CAN 报文前，强制校验 Frame ID、DLC（数据长度代码）以及 CRC/校验和；明确标注大小端序（Endianness）。
 - **通信心跳看门狗**：通信超时超过 50ms 必须自动禁用电机力矩输出，进入安全阻尼/抱闸状态。

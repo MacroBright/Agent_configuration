@@ -76,7 +76,7 @@
   - Fixture 与参数化：使用 `@pytest.fixture` 实现清晰的依赖注入与 Setup/Teardown 资源管理；使用 `@pytest.mark.parametrize` 覆盖参数化多边界与等价类用例。
   - 目录组织：单测代码统一放置于 `tests/` 目录，禁止侵入业务源码。
 
-### 6.2 C++ 及其他语言规范
+### 6.2 C++ 语言规范
 - **编码规范**：严格遵循 [Google C++ 编程规范 (Google C++ Coding Guidelines)](http://google.github.io/styleguide/cppguide.html)。
   - 头文件与自包含：所有 `.h` 头文件必须自包含，使用标准宏保护（`#define FOO_BAR_H_`）或 `#pragma once`；包含顺序严格遵循：相关头文件 $\rightarrow$ C 系统文件 $\rightarrow$ C++ 标准库文件 $\rightarrow$ 第三方库头文件 $\rightarrow$ 本项目头文件。
   - 作用域与命名空间：命名空间全小写；严禁在头文件中使用 `using namespace <foo>;` 污染作用域；实现文件中推荐使用匿名命名空间隔离内部符号。
@@ -89,9 +89,24 @@
   - 浮点与异常验证：浮点数值比较必须使用 `EXPECT_FLOAT_EQ`、`EXPECT_DOUBLE_EQ` 或 `EXPECT_NEAR`；异常抛出验证使用 `EXPECT_THROW` 与 `EXPECT_NO_THROW`。
   - 构建系统集成：通过 `CMakeLists.txt` 集成 GoogleTest（`find_package(GTest REQUIRED)` 或 `FetchContent`），启用 `enable_testing()` 并通过 `gtest_discover_tests()` 接入 CTest 统一测试套件。
 
-### 6.3 既有项目与环境可复现性
-- **尊重项目既有 CI**：在已建立特定格式或编译约束的既有项目中，尊重其既有 linter/CI 设置；新代码与新增模块严格按照上述 PEP 8 + pytest 与 Google C++ + GTest 执行。
-- **环境可复现优先**：依赖必须通过 requirements.txt / pyproject.toml / CMakeLists.txt / Dockerfile 明确锁定版本。
+### 6.3 其他编程语言规范 (各语言对应之 Google 编程规范体系)
+除 Python 遵循 PEP 8 之外，其他编程语言并非照搬 C++ 规则，而是**严格遵循各自对应的谷歌编程规范**，统一参考 [Google 开源项目风格指南 (中文版)](https://github.com/zh-google-styleguide/zh-google-styleguide) 与 [Google Style Guides 官方索引](https://google.github.io/styleguide/)：
+- **C 语言**：遵循 Google C/C++ 规范中的 C 语言子集规范。头文件自包含，结构体与函数命名清晰明确；强化指针空检查、边界条件防御与类型安全性；禁止全局变量滥用，确保无内存泄漏。
+- **Shell / Bash**：严格遵循 [Google Shell 编程规范](https://google.github.io/styleguide/shellguide.html)。
+  - 声明解释器：一律以 `#!/usr/bin/env bash` 开头；
+  - 开启防御模式：生产级脚本必须声明 `set -euo pipefail`；
+  - 变量与作用域：函数内部变量**强制声明为 `local`**，杜绝意外污染全局变量；全局常量统一使用全大写加下划线 (`UPPER_CASE`)；
+  - 变量引用必须添加双引号（如 `"$VAR"`、`"${DIR_PATH}"`），杜绝因路径含空格导致分词故障；函数命名采用 `snake_case`。
+- **TypeScript / JavaScript**：严格遵循 [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html) / [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)。
+  - 强制显式类型注解，禁止无意义的 `any`；变量一律优先 `const`，禁止使用 `var`；
+  - 模块化规范：采用原生 ES 模块导入导出 (`import` / `export`)，杜绝全局作用域污染；
+  - 单测推荐结合 Jest 或 Vitest，测试断言保持清晰语义。
+- **Go 语言**：遵循 [Google Go Style Guide](https://google.github.io/styleguide/go/) 并严格使用 `gofmt`。
+- **其余语言**：依此类推，凡项目涉及的新增语言栈，一律首先检索并对齐 Google 为该语言制定的风格规范。
+
+### 6.4 既有项目与环境可复现性
+- **尊重项目既有 CI**：在已建立特定格式或编译约束的既有项目中，尊重其既有 linter/CI 设置；新代码与新增模块严格按照上述 PEP 8 + pytest 以及对应 Google 语言规范执行。
+- **环境可复现优先**：依赖必须通过 requirements.txt / pyproject.toml / CMakeLists.txt / package.json / Dockerfile 明确锁定版本。
 
 ## 7. 调试规则（Debugging Rules）
 
@@ -165,7 +180,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 | :--- | :--- | :--- | :--- |
 | **Antigravity** | **Gemini 3.8 Flash**<br>- 1M 巨量上下文<br>- 自动上下文压缩 (~135k 触发)<br>- 原生 Linux 沙箱<br>- 多模态图文解析 (DeepSWE 71.0%) | **「看得广」**<br>广域侦察与全景影响分析 | - **全局依赖扫描**：利用 1M 上下文摸清大型代码库拓扑、跨模块调用与潜在破坏半径。<br>- **多格式规范预研**：消化 PDF 论文、硬件手册、CAN DBC、通信协议，生成出版级架构图与状态机 (`diagram-design`)。<br>- **长程连续迁移**：利用沙箱与自动压缩，执行耗时跨模块重构、环境脚手架初始化与批量迁移。<br>- **全局回归复核**：最终破坏性排查、全景构建验证与文档闭环。 |
 | **Claude Code** | **DeepSeek V4.1 Flash**<br>- 1M 上下文窗口<br>- 严密独立 Subagent 体系<br>- 严格权限控制 (`Ask/Deny`) | **「想得深」**<br>深度规划与质量安全裁决 | - **需求拆解与架构规划**：从复杂需求到落地设计，识别领域隐性约束，编写结构化 `implementation_plan.md`。<br>- **独立双轴审查**：派生并行 subagent 执行规范与规格审查 (`two-axis-review`)，严格把关质量与边界。<br>- **复杂系统仲裁**：排查多组件交互死锁、隐蔽竞态与状态机冲突。<br>- **安全与关键操作把关**：对硬件操作、不可逆修改实施最高级别安全审计。 |
-| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动与业务测试（Python 严格遵循 PEP 8 + pytest，C++ 严格遵循 Google C++ 规范 + GTest）、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
+| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动与业务测试（Python 遵循 PEP 8 + pytest，C++ 遵循 Google C++ 规范 + GTest，其他语言遵循对应 Google 规范）、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
 
 ### 14.2 四阶段协同接力闭环 (4-Phase Collaborative Loop)
 
@@ -189,7 +204,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
    - 更新项目根目录接力黑板 `.agent/SESSION_STATE.md`，明确 Task Breakdown 与交接目标。
 
 3. **Phase 3: 手术级执行与交叉审查 (Surgical Execution & Cross-Review · Codex 主导 + Claude Code 监督)**
-   - **执行 (Codex)**：以 200+ tok/s 极速高密度编写符合规范的 TDD 单元测试（Python: PEP 8 + pytest, C++: Google Style + GTest）与驱动/算法代码，手术刀式精准落地。
+   - **执行 (Codex)**：以 200+ tok/s 极速高密度编写符合规范的 TDD 单元测试（Python: PEP 8 + pytest, C++: Google Style + GTest, 其余语言遵循对应 Google 规范）与驱动/算法代码，手术刀式精准落地。
    - **审查 (Claude Code)**：派生独立 subagent 进行规范与规格双轴审查 (`two-axis-review`)，对抗性审查与静态检查无误后合入分支。
 
 4. **Phase 4: 全局复核与文档闭环 (Global Verification & Closure · Antigravity 主导)**
@@ -316,7 +331,7 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 | :--- | :--- | :--- | :--- |
 | **Antigravity** | **「看得广」**<br>• Phase 1: 广域侦察 & 协议沉淀<br>• Phase 4: 全景复核 & 文档闭环 | 1. `diagram-design`：出版级系统架构图、时序图、状态转移图<br>2. `research`：多源规格预研与技术可行性论证研报<br>3. `domain-modeling`：统一领域概念、术语实体与拓扑建模<br>4. `documentation-and-adrs`：架构决策记录 (ADR) 与工程契约归档<br>5. `verification-before-completion`：全景构建复核，无实证绝不称完成 | • `memory` (沉淀/检索全局图谱)<br>• `markitdown` (秒级消化 PDF/DBC/数据手册)<br>• `arxiv` (论文与前沿算法直搜)<br>• `obsidian` (知识库双向索引) |
 | **Claude Code** | **「想得深」**<br>• Phase 2: 深度规划 & 架构裁决<br>• 监督 Phase 3: 严格代码审查 | 1. `writing-plans`：纵深需求拆解与无缝 implementation_plan 制定<br>2. `constraint-driven-development`：领域隐性约束挖掘与 Invariants 裁决<br>3. `subagent-driven-development`：派生独立并行 subagent 执行隔离审查<br>4. `two-axis-review`：规范与规格双轴严格代码审查，把关合入质量<br>5. `robotics-hardware-safety`：硬件操作五步安全阶梯与权限拒绝审计 | • `memory` (读取架构约束与历史踩坑)<br>• `sequential-thinking` (深度链式因果推演，排查死锁与状态冲突) |
-| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件（Python: pytest；C++: Googletest）<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, googletest, gcc, cmake, socketcan) |
+| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件（Python: pytest；C++: Googletest；其余语言遵循对应 Google 规范）<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, googletest, gcc, cmake, socketcan) |
 
 #### 2. 轮巡前置工具筛选机制 (Phase-Aware Pre-Flight Screening)
 当轮到某个 Agent 执行对应阶段时，该 Agent 必须执行**前置筛选例程**：
