@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATE="$(date +%Y%m%d)"
-HOME_DIR="${HOME:-$HOME}"
+HOME_DIR="${HOME:?HOME is not set}"
 SKILLS_DIR="${HOME_DIR}/.agents/skills"
 STAMP="[agent-config]"
 
@@ -22,7 +22,7 @@ backup_file(){ # backup_file <path>
 
 detect_agents(){
   say "目标 Agent 环境——"
-  for probe in "$HOME_DIR/.codex:Codex" "$HOME_DIR/.claude:Claude Code" "$HOME_DIR/.config/opencode:OpenCode" "$HOME_DIR/.gemini:Antigravity"; do
+  for probe in "$HOME_DIR/.codex:Codex" "$HOME_DIR/.claude:Claude Code" "$HOME_DIR/.gemini:Gemini CLI" "$HOME_DIR/.config/opencode:OpenCode"; do
     p="${probe%%:*}"; n="${probe##*:}"
     if [ -d "$p" ]; then say "  ✓ $n 已安装 → 将处理"; else say "  – $n 未安装 → 跳过"; fi
   done
@@ -104,7 +104,7 @@ fi
 if [ -d "${HOME_DIR}/.claude" ]; then
   say "-- Claude Code --"
   S="${HOME_DIR}/.claude/settings.json"
-  M="${HOME_DIR}/.claude/mcp.json"
+  M="${HOME_DIR}/.claude.json"
   backup_file "$S"
   backup_file "$M"
   BASE_CL="$(ask 'Claude Base URL(已有配置会保留，留空则用默认)' 'http://127.0.0.1:15721')"
@@ -137,9 +137,10 @@ if [ -d "${HOME_DIR}/.claude" ]; then
     jq -S --slurpfile t "$TMP_MCP" \
       '.mcpServers = ((.mcpServers // {}) * ($t[0].mcpServers // {}))' \
       "$M" > "$M.tmp" && mv "$M.tmp" "$M"
-    say "已合并 $M（缺失 server 补齐，既有条目不动）"
+    say "已合并 $M 顶层 mcpServers（缺失 server 补齐，既有条目不动）"
   else
     cp "$TMP_MCP" "$M"
+    chmod 600 "$M"
     say "已生成 $M"
   fi
   rm -f "$TMP_MCP" 
@@ -148,7 +149,35 @@ if [ -d "${HOME_DIR}/.claude" ]; then
   [ ! -e "${HOME_DIR}/.claude/CLAUDE.md" ] && ln -s "${HOME_DIR}/.codex/AGENTS.md" "${HOME_DIR}/.claude/CLAUDE.md" 2>/dev/null && say "已软链 ~/.claude/CLAUDE.md -> ~/.codex/AGENTS.md"
 fi
 
-# ---------- 4. OpenCode ----------
+# ---------- 4. Gemini CLI（直接消费 canonical skill） ----------
+if [ -d "${HOME_DIR}/.gemini" ]; then
+  say "-- Gemini CLI --"
+  GC="${HOME_DIR}/.gemini/config"
+  G_SKILLS="${GC}/skills.json"
+  G_MCP="${GC}/mcp_config.json"
+  mkdir -p "$GC"
+  backup_file "$G_SKILLS"
+  if [ -f "$G_SKILLS" ]; then
+    jq -S --arg p '~/.agents/skills' \
+      '.entries = (((.entries // []) + [{path: $p}]) | unique_by(.path))' \
+      "$G_SKILLS" > "$G_SKILLS.tmp" && mv "$G_SKILLS.tmp" "$G_SKILLS"
+    say "已确保 $G_SKILLS 包含 ~/.agents/skills（不创建硬链接副本）"
+  else
+    jq -n --arg p '~/.agents/skills' '{entries: [{path: $p}]}' > "$G_SKILLS"
+    say "已生成 $G_SKILLS"
+  fi
+  if [ -f "$G_MCP" ]; then
+    if jq empty "$G_MCP" >/dev/null 2>&1; then
+      say "$G_MCP 已存在（保留；后续用 agentctl mcp adopt/sync 统一）"
+    else
+      say "!! $G_MCP JSON 语法错误，请先修复；本次不覆盖"
+    fi
+  else
+    say "未发现 $G_MCP；需要时用 agentctl mcp add/sync 创建"
+  fi
+fi
+
+# ---------- 5. OpenCode ----------
 if [ -d "${HOME_DIR}/.config/opencode" ]; then
   say "-- OpenCode(CANN) --"
   backup_file "${HOME_DIR}/.config/opencode/opencode.jsonc"
@@ -160,7 +189,7 @@ if [ -d "${HOME_DIR}/.config/opencode" ]; then
   say "已生成 ~/.config/opencode/opencode.jsonc"
 fi
 
-# ---------- 5. Antigravity & Antigravity IDE ----------
+# ---------- 6. Antigravity & Antigravity IDE ----------
 if [ -d "${HOME_DIR}/.gemini" ]; then
   say "-- Antigravity & Antigravity IDE --"
   mkdir -p "${HOME_DIR}/.gemini/config"
@@ -196,11 +225,50 @@ SKJSON
   say "已配置 ~/.gemini/config/skills.json 双重技能检索路径"
 fi
 
-# ---------- 6. Skills 清单拉取 ----------
+# ---------- 7. agentctl（统一 skills / MCP 管理层） ----------
+say "-- agentctl --"
+mkdir -p "${HOME_DIR}/.local/bin" "${HOME_DIR}/.agents/skills"
+ln -sf "$REPO_DIR/bin/agentctl" "${HOME_DIR}/.local/bin/agentctl"
+chmod +x "$REPO_DIR/bin/agentctl"
+say "已安装 agentctl -> ~/.local/bin/agentctl"
+AC="${HOME_DIR}/.local/bin/agentctl"
+
+# 管理者 skill：本仓库自带，首次安装后由所有已安装 Agent 共享同一份硬链接投影。
+if [ -d "${HOME_DIR}/.agents/skills/agent-config-manager" ]; then
+  "$AC" enable agent-config-manager --agent all || true
+else
+  "$AC" install "$REPO_DIR/skills/agent-config-manager" \
+    --name agent-config-manager --agent all || true
+fi
+
+"$AC" status || true
+say "已有副本先看收敛计划: agentctl adopt    （确认后再加 --apply）"
+
+# cc-switch 若同时同步 skills，会和 agentctl 的单一 canonical store 争夺写入权。
+CC_SETTINGS="${HOME_DIR}/.cc-switch/settings.json"
+if [ -f "$CC_SETTINGS" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    CC_SYNC="$(jq -r '.skillSyncMethod // "unknown"' "$CC_SETTINGS" 2>/dev/null || echo unknown)"
+    CC_STORAGE="$(jq -r '.skillStorageLocation // "unknown"' "$CC_SETTINGS" 2>/dev/null || echo unknown)"
+    if [ "$CC_SYNC" = "symlink" ] && [ "$CC_STORAGE" = "unified" ]; then
+      say "cc-switch skill sync: symlink + unified（与 agentctl 共享单一副本）"
+    else
+      case "$CC_SYNC" in
+        off|disabled|none|manual) say "cc-switch skill sync: $CC_SYNC（与 agentctl 不冲突）" ;;
+        *) say "!! cc-switch skill sync=$CC_SYNC, storage=$CC_STORAGE；请改为 symlink + unified，或关闭其 skills 同步" ;;
+      esac
+    fi
+  else
+    say "! 检测到 cc-switch，但未安装 jq；请手动确认其 skill sync 为 symlink + unified 或关闭"
+  fi
+fi
+
+# ---------- 8. Skills 清单拉取 ----------
 say "-- Skills --"
 if command -v git >/dev/null 2>&1; then
-  say "第三方 skill 源请按 skills/README 手动拉取（manifest.yaml 有源地址）；不自动 clone。"
-  say "启新激活区前请把现有 ~/.agents/skills 备份归档；curated.txt 为白名单。"
+  say "skills 统一由 agentctl 管理：install / update / remove / enable / disable / sync"
+  say "第三方来源见 skills/manifest.yaml；仓库不 vendored 实体，按清单拉取。"
+  say "启用后单个 skill 只存一份（~/.agents/skills），各 Agent 使用硬链接投影。"
 else
   say "未找到 git，跳过 skill 拉取。"
 fi

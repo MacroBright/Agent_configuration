@@ -21,6 +21,8 @@ per-agent/*.jsonc
 .config/opencode/opencode.jsonc
 
 # ---------- 运行时 / 日志 ----------
+__pycache__/
+*.py[cod]
 *.log
 logs/
 node_modules/

@@ -1,0 +1,1962 @@
+#!/usr/bin/env python3
+"""agentctl - one canonical copy of every skill, projected to each AI agent.
+
+Design:
+  ~/.agents/skills/<name>      single canonical copy (never edited by enable/disable)
+  ~/.claude/skills/<name>      hardlink tree -> canonical (real directory, shared inodes)
+  ~/.codex/skills/<name>       hardlink tree -> canonical (real directory, shared inodes)
+  ...
+
+Default is dry-run for destructive commands (adopt/remove). Use --apply.
+No third-party dependencies. Python 3.11+.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+HOME = os.path.expanduser("~")
+CANON = os.path.join(HOME, ".agents", "skills")
+STATE_DIR = os.path.join(HOME, ".agents", "agentctl")
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+MCP_FILE = os.path.join(STATE_DIR, "mcp.json")
+BACKUP_DIR = os.path.join(STATE_DIR, "backups")
+TRASH_DIR = os.path.join(STATE_DIR, "trash")
+LOCK_NAME = "agentctl.lock.json"
+
+AGENTS = {
+    "claude": {
+        "skills": os.path.join(HOME, ".claude", "skills"),
+        "skills_mode": "projection",
+        "mcp": os.path.join(HOME, ".claude.json"),
+        "mcp_format": "claude-json",
+        "mcp_write": True,
+        "label": "Claude Code",
+    },
+    "codex": {
+        "skills": os.path.join(HOME, ".codex", "skills"),
+        "skills_mode": "projection",
+        "mcp": os.path.join(HOME, ".codex", "config.toml"),
+        "mcp_format": "codex-toml",
+        "mcp_write": True,
+        "label": "Codex",
+    },
+    "gemini": {
+        # Gemini's skills.json already points at ~/.agents/skills.  Treat it
+        # as a consumer of the canonical store, not as another projection.
+        "skills": os.path.join(HOME, ".gemini", "config", "skills"),
+        "skills_mode": "consumer",
+        "skills_config": os.path.join(HOME, ".gemini", "config", "skills.json"),
+        "skills_fallback": os.path.join(HOME, ".gemini", "skills"),
+        "mcp": os.path.join(HOME, ".gemini", "config", "mcp_config.json"),
+        "mcp_fallback": os.path.join(HOME, ".gemini", "settings.json"),
+        "mcp_format": "gemini-json",
+        "mcp_write": True,
+        "label": "Gemini CLI",
+    },
+    "opencode": {
+        "skills": os.path.join(HOME, ".config", "opencode", "skills"),
+        "skills_mode": "projection",
+        "mcp": os.path.join(HOME, ".config", "opencode", "opencode.jsonc"),
+        "mcp_format": "opencode-jsonc",
+        "mcp_write": False,  # JSONC comments would be lost; read-only for now
+        "label": "OpenCode",
+    },
+}
+
+SKIP_ENTRIES = {".system", ".git", "__pycache__", ".DS_Store"}
+PLUGIN_CAPABILITIES = {
+    "claude": {"list", "install", "update", "uninstall", "enable", "disable"},
+    # Codex has no per-plugin update or enable/disable command.  Its only
+    # refresh primitive is upgrading a marketplace snapshot.
+    "codex": {"list", "install", "update-marketplace", "uninstall"},
+    # `opencode plugin` installs and `--force` refreshes, but there is no
+    # uninstall or enable/disable command.
+    "opencode": {"list", "install", "update"},
+    "gemini": {"list"},
+}
+SECRET_KEY_RE = re.compile(r"(TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|PAT|AUTH|CREDENTIAL)", re.I)
+SECRET_VALUE_RE = re.compile(
+    r"^(?:gh[pousr]_|github_pat_|hf_|sk-|ark-|AKIA|Bearer\s+|eyJ[a-zA-Z0-9_-]{20,}\.)",
+    re.I,
+)
+ENV_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+
+
+# ---------------------------------------------------------------- utilities
+def now() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def expand(p: str) -> str:
+    return os.path.expanduser(os.path.expandvars(p))
+
+
+def ensure_dir(p: str) -> None:
+    os.makedirs(p, exist_ok=True)
+
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"agentctl: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def load_json(path: str, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return default
+    except json.JSONDecodeError as e:
+        die(f"invalid JSON in {path}: {e}")
+
+
+def save_json(path: str, data) -> None:
+    ensure_dir(os.path.dirname(path))
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def state() -> dict:
+    s = load_json(STATE_FILE, {"version": 2, "skills": {}, "mcp_managed": {}, "adopted_at": None})
+    s.setdefault("version", 2)
+    s.setdefault("skills", {})
+    s.setdefault("mcp_managed", {})
+    return s
+
+
+def save_state(s: dict) -> None:
+    save_json(STATE_FILE, s)
+
+
+def backup_path(agent: str, name: str) -> str:
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return os.path.join(BACKUP_DIR, ts, agent, name)
+
+
+def move_to_backup(path: str, agent: str, name: str) -> str:
+    dst = backup_path(agent, name)
+    ensure_dir(os.path.dirname(dst))
+    if os.path.islink(path):
+        os.unlink(path)
+        return ""
+    shutil.move(path, dst)
+    return dst
+
+
+def tree_hash(path: str) -> str:
+    h = hashlib.sha256()
+    for root, dirs, files in os.walk(path):
+        dirs.sort()
+        files.sort()
+        rel = os.path.relpath(root, path)
+        for fn in files:
+            fp = os.path.join(root, fn)
+            relf = os.path.normpath(os.path.join(rel, fn))
+            try:
+                st = os.stat(fp)
+            except OSError:
+                continue
+            h.update(f"{relf}\0{st.st_size}\0".encode())
+            if st.st_size <= 2_000_000:
+                try:
+                    with open(fp, "rb") as f:
+                        h.update(f.read())
+                except OSError:
+                    pass
+    return h.hexdigest()
+
+
+def file_map(path: str) -> dict[str, str]:
+    out = {}
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in SKIP_ENTRIES]
+        for fn in files:
+            fp = os.path.join(root, fn)
+            rel = os.path.relpath(fp, path)
+            try:
+                with open(fp, "rb") as f:
+                    out[rel] = hashlib.sha256(f.read()).hexdigest()
+            except OSError:
+                pass
+    return out
+
+
+def hardlink_tree(src: str, dst: str) -> None:
+    """Recreate src at dst using hardlinks (directories are real, files share inodes)."""
+    if os.path.lexists(dst):
+        raise FileExistsError(dst)
+    os.makedirs(dst)
+    for root, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if d not in SKIP_ENTRIES]
+        rel = os.path.relpath(root, src)
+        target_dir = dst if rel == "." else os.path.join(dst, rel)
+        os.makedirs(target_dir, exist_ok=True)
+        for fn in files:
+            s_path = os.path.join(root, fn)
+            d_path = os.path.join(target_dir, fn)
+            try:
+                os.link(s_path, d_path)
+            except OSError:
+                shutil.copy2(s_path, d_path)
+
+
+def tree_is_hardlinked(dst: str, src: str) -> bool:
+    """True iff dst is a directory tree whose files are all hardlinks of src."""
+    if not os.path.isdir(dst) or not os.path.isdir(src):
+        return False
+    md, ms = file_map(dst), file_map(src)
+    if md != ms:
+        return False
+    for rel in ms:
+        try:
+            if os.stat(os.path.join(dst, rel)).st_ino != os.stat(os.path.join(src, rel)).st_ino:
+                return False
+        except OSError:
+            return False
+    return True
+
+
+def entry_kind(path: str, canon_path: str) -> str:
+    if os.path.islink(path):
+        return "symlink"
+    if os.path.isdir(path) and tree_is_hardlinked(path, canon_path):
+        return "linked"
+    return "copy"
+
+
+def superset_of(a: str, b: str) -> bool:
+    """True if directory a contains every file of b with identical content."""
+    if not os.path.isdir(a) or not os.path.isdir(b):
+        return False
+    ma, mb = file_map(a), file_map(b)
+    if not mb:
+        return False
+    return all(ma.get(k) == v for k, v in mb.items())
+
+
+def dir_size(path: str) -> int:
+    total = 0
+    for root, dirs, files in os.walk(path):
+        for fn in files:
+            try:
+                total += os.lstat(os.path.join(root, fn)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def human(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}TB"
+
+
+def agent_skill_dir(agent: str) -> str:
+    cfg = AGENTS[agent]
+    primary = cfg["skills"]
+    fallback = cfg.get("skills_fallback")
+    if fallback and not os.path.isdir(primary) and os.path.isdir(fallback):
+        return fallback
+    return primary
+
+
+def agent_mcp_path(agent: str) -> str:
+    cfg = AGENTS[agent]
+    primary = cfg["mcp"]
+    fallback = cfg.get("mcp_fallback")
+    if fallback and not os.path.exists(primary) and os.path.exists(fallback):
+        return fallback
+    return primary
+
+
+def skill_dirs() -> dict[str, str]:
+    out = {}
+    for agent in projection_agents():
+        path = agent_skill_dir(agent)
+        if os.path.isdir(path):
+            out[agent] = path
+    return out
+
+
+def projection_agents() -> list[str]:
+    return sorted(a for a, cfg in AGENTS.items()
+                  if cfg.get("skills_mode", "projection") == "projection")
+
+
+def consumes_canonical(agent: str) -> bool:
+    """Whether this agent's own config discovers ~/.agents/skills directly."""
+    cfg = AGENTS.get(agent, {})
+    if cfg.get("skills_mode") != "consumer":
+        return False
+    config_path = cfg.get("skills_config")
+    if not config_path:
+        return False
+    data = load_json(config_path, {})
+    entries = data.get("entries", []) if isinstance(data, dict) else []
+    canon = os.path.realpath(CANON)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        if isinstance(path, str) and os.path.realpath(expand(path)) == canon:
+            return True
+    return False
+
+
+def canonical_names() -> list[str]:
+    if not os.path.isdir(CANON):
+        return []
+    return sorted(
+        e for e in os.listdir(CANON)
+        if not e.startswith(".") and os.path.isdir(os.path.join(CANON, e))
+    )
+
+
+def link_target(path: str) -> str | None:
+    if os.path.islink(path):
+        return os.path.realpath(path)
+    return None
+
+
+def is_managed_link(path: str) -> bool:
+    t = link_target(path)
+    return bool(t) and os.path.dirname(t) == os.path.realpath(CANON)
+
+
+def canonical_for(name: str) -> str:
+    return os.path.join(CANON, name)
+
+
+def observed_agents_map() -> dict[str, list[str]]:
+    """Return canonical skill -> agents that currently have a managed projection."""
+    out: dict[str, list[str]] = {}
+    for agent, d in skill_dirs().items():
+        for name in sorted(os.listdir(d)):
+            if name in SKIP_ENTRIES or name.startswith("."):
+                continue
+            p = os.path.join(d, name)
+            cp = canonical_for(name)
+            managed = False
+            if os.path.islink(p):
+                managed = is_managed_link(p)
+            elif os.path.isdir(p) and os.path.isdir(cp):
+                managed = tree_is_hardlinked(p, cp)
+            if managed:
+                out.setdefault(name, []).append(agent)
+    # Gemini and similar tools can see the canonical store without a projection.
+    for agent in sorted(AGENTS):
+        if consumes_canonical(agent):
+            for name in canonical_names():
+                out.setdefault(name, []).append(agent)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def backfill_state() -> dict:
+    """Reconcile state.json with the projections actually present on disk."""
+    s = state()
+    observed = observed_agents_map()
+    for name in canonical_names():
+        entry = s["skills"].setdefault(name, {})
+        entry["agents"] = observed.get(name, [])
+        entry.setdefault("type", "local")
+        entry["hash"] = tree_hash(canonical_for(name))
+    save_state(s)
+    return s
+
+
+# ---------------------------------------------------------------- scan
+def scan() -> dict:
+    result = {"canonical": CANON, "agents": {}, "consumers": {}, "duplicates": [], "conflicts": []}
+    canon_list = canonical_names()
+    canon = set(canon_list)
+    per_name: dict[str, dict] = {}
+
+    for name in canon_list:
+        per_name.setdefault(name, {})["canonical"] = os.path.join(CANON, name)
+
+    for agent, d in skill_dirs().items():
+        entries = []
+        for e in sorted(os.listdir(d)):
+            if e in SKIP_ENTRIES or e.startswith("."):
+                continue
+            p = os.path.join(d, e)
+            cp = canonical_for(e)
+            if os.path.islink(p):
+                entries.append({"name": e, "type": "symlink", "valid": os.path.exists(p),
+                                "target": os.path.realpath(p)})
+            elif os.path.isdir(p):
+                kind = entry_kind(p, cp)
+                entries.append({"name": e, "type": kind, "valid": True, "target": cp})
+                if kind == "copy":
+                    per_name.setdefault(e, {})[agent] = p
+        result["agents"][agent] = {
+            "path": d,
+            "total": len(entries),
+            "links": sum(1 for x in entries if x["type"] in ("symlink", "linked")),
+            "dirs": sum(1 for x in entries if x["type"] == "copy"),
+            "broken": sum(1 for x in entries if x["type"] == "symlink" and not x["valid"]),
+            "entries": entries,
+        }
+
+    for agent in sorted(AGENTS):
+        if consumes_canonical(agent):
+            result["consumers"][agent] = {
+                "path": CANON,
+                "config": AGENTS[agent].get("skills_config"),
+            }
+
+    for name, locations in sorted(per_name.items()):
+        if len(locations) < 2:
+            continue
+        hashes = {a: tree_hash(p) for a, p in locations.items()}
+        item = {"name": name, "agents": sorted(locations), "hashes": hashes}
+        if len(set(hashes.values())) == 1:
+            result["duplicates"].append(item)
+        else:
+            result["conflicts"].append(item)
+
+    result["canonical_count"] = len(canon)
+    result["canonical_bytes"] = sum(
+        dir_size(os.path.join(CANON, n)) for n in canon if os.path.isdir(os.path.join(CANON, n))
+    )
+    result["duplicate_bytes"] = sum(
+        dir_size(p) for name, locs in per_name.items()
+        if len(locs) > 1
+        for a, p in locs.items() if a != "canonical" and os.path.isdir(p)
+    )
+    return result
+
+
+# ---------------------------------------------------------------- adopt
+def build_adopt_plan() -> list[dict]:
+    plan = []
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for agent, d in skill_dirs().items():
+        for e in sorted(os.listdir(d)):
+            if e in SKIP_ENTRIES or e.startswith("."):
+                continue
+            p = os.path.join(d, e)
+            if os.path.islink(p) or not os.path.isdir(p):
+                continue
+            cp = canonical_for(e)
+            if os.path.isdir(cp) and tree_is_hardlinked(p, cp):
+                continue
+            groups.setdefault(e, []).append((agent, p))
+
+    for name, locs in sorted(groups.items()):
+        cp = canonical_for(name)
+        if not os.path.isdir(cp):
+            agent0, p0 = locs[0]
+            plan.append({"action": "move", "agent": agent0, "name": name,
+                         "path": p0, "canonical": cp})
+            base = p0
+            rest = locs[1:]
+        else:
+            base = cp
+            rest = locs
+        for agent, p in rest:
+            if tree_hash(base) == tree_hash(p):
+                act = "drop-duplicate"
+            elif superset_of(p, base):
+                act = "merge-superset"
+            elif superset_of(base, p):
+                act = "drop-subset"
+            else:
+                act = "conflict"
+            plan.append({"action": act, "agent": agent, "name": name,
+                         "path": p, "canonical": cp})
+    return plan
+
+
+def merge_extra(src: str, dst: str) -> list[str]:
+    """Copy files present in src but missing/different in dst."""
+    md, ms = file_map(dst), file_map(src)
+    copied = []
+    for rel, h in ms.items():
+        if md.get(rel) == h:
+            continue
+        s, t = os.path.join(src, rel), os.path.join(dst, rel)
+        ensure_dir(os.path.dirname(t))
+        shutil.copy2(s, t)
+        copied.append(rel)
+    return copied
+
+
+def do_adopt(apply: bool = False) -> int:
+    plan = build_adopt_plan()
+    if not plan:
+        print("Nothing to adopt: no unmanaged skill directories found.")
+        return 0
+
+    order = {"move": 0, "merge-superset": 1, "drop-duplicate": 2, "drop-subset": 3, "conflict": 4}
+    plan.sort(key=lambda x: (x["name"], order[x["action"]]))
+
+    counts = {}
+    for item in plan:
+        counts[item["action"]] = counts.get(item["action"], 0) + 1
+        print(f"  [{item['action']:<15}] {item['name']:<40} <- {item['agent']}")
+        if not apply:
+            continue
+
+        p, cp = item["path"], item["canonical"]
+        act = item["action"]
+        if act == "conflict":
+            print(f"      ! kept as-is (manual decision needed): {p}")
+            continue
+        if act == "move":
+            ensure_dir(os.path.dirname(cp))
+            shutil.move(p, cp)
+        elif act == "merge-superset":
+            merge_extra(p, cp)
+        # Content is now in canonical; drop the agent copy and reproject as hardlinks.
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+        hardlink_tree(cp, p)
+
+    mode = "APPLIED" if apply else "DRY-RUN"
+    print()
+    print(f"{mode}: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    if not apply:
+        print("Re-run with --apply to execute. Backups go to " + BACKUP_DIR)
+    if apply:
+        s = state()
+        s["adopted_at"] = now()
+        for item in plan:
+            if item["action"] == "conflict":
+                continue
+            s["skills"].setdefault(item["name"], {})["canonical"] = item["canonical"]
+            s["skills"][item["name"]].setdefault("hash", tree_hash(item["canonical"]))
+        save_state(s)
+        backfill_state()
+    return 0
+
+
+# ---------------------------------------------------------------- enable / disable / sync
+def resolve_agents(selector: str | None, capability: str = "skills") -> list[str]:
+    if not selector or selector == "all":
+        if capability == "skills":
+            return sorted(skill_dirs())
+        return sorted(AGENTS)
+    if selector == "installed":
+        return sorted(skill_dirs()) if capability == "skills" else sorted(AGENTS)
+    out = [a.strip() for a in selector.split(",") if a.strip()]
+    for a in out:
+        if a not in AGENTS:
+            die(f"unknown agent: {a} (known: {', '.join(AGENTS)})")
+    return out
+
+
+def enable_skill(name: str, agents: list[str], quiet: bool = False) -> int:
+    cp = canonical_for(name)
+    if not os.path.isdir(cp):
+        die(f"skill not in canonical store: {name} ({cp})")
+    rc = 0
+    enabled_now: list[str] = []
+    for agent in agents:
+        if AGENTS[agent].get("skills_mode") == "consumer":
+            if consumes_canonical(agent):
+                enabled_now.append(agent)
+                if not quiet:
+                    print(f"  = {agent}: canonical consumer (no projection needed)")
+            else:
+                print(f"  ! {agent}: consumer config does not include {CANON}; not modified")
+                rc = 2
+            continue
+        d = agent_skill_dir(agent)
+        if not os.path.isdir(d):
+            if not quiet:
+                print(f"  - {agent}: directory missing, skipped")
+            continue
+        p = os.path.join(d, name)
+        if os.path.islink(p):
+            if is_managed_link(p):
+                if not quiet:
+                    print(f"  = {agent}: already enabled")
+                enabled_now.append(agent)
+                continue
+            print(f"  ! {agent}: foreign symlink at {p} -> {os.path.realpath(p)}; skipped")
+            rc = 2
+            continue
+        if os.path.isdir(p):
+            if tree_is_hardlinked(p, cp):
+                if not quiet:
+                    print(f"  = {agent}: already enabled")
+                enabled_now.append(agent)
+                continue
+            print(f"  ! {agent}: unmanaged directory at {p}; run `agentctl adopt --apply` first")
+            rc = 2
+            continue
+        if os.path.exists(p):
+            print(f"  ! {agent}: unexpected file at {p}; skipped")
+            rc = 2
+            continue
+        hardlink_tree(cp, p)
+        enabled_now.append(agent)
+        if not quiet:
+            print(f"  + {agent}: enabled")
+    s = state()
+    entry = s["skills"].setdefault(name, {})
+    entry["agents"] = sorted(set(entry.get("agents", [])) | set(enabled_now))
+    entry["hash"] = tree_hash(cp)
+    entry["updated_at"] = now()
+    save_state(s)
+    return rc
+
+
+def disable_skill(name: str, agents: list[str], quiet: bool = False) -> int:
+    rc = 0
+    cp = canonical_for(name)
+    for agent in agents:
+        if AGENTS[agent].get("skills_mode") == "consumer":
+            print(f"  ! {agent}: reads {CANON} directly; disable it in the agent's own skills config")
+            rc = 2
+            continue
+        p = os.path.join(agent_skill_dir(agent), name)
+        if os.path.islink(p):
+            if not is_managed_link(p):
+                print(f"  ! {agent}: foreign symlink, refusing to remove: {p}")
+                rc = 2
+                continue
+            os.unlink(p)
+            if not quiet:
+                print(f"  - {agent}: disabled")
+        elif os.path.isdir(p):
+            if not tree_is_hardlinked(p, cp):
+                print(f"  ! {agent}: not a managed projection; run adopt first: {p}")
+                rc = 2
+                continue
+            shutil.rmtree(p)
+            if not quiet:
+                print(f"  - {agent}: disabled")
+        elif os.path.exists(p):
+            print(f"  ! {agent}: unexpected file, refusing: {p}")
+            rc = 2
+        else:
+            if not quiet:
+                print(f"  = {agent}: not enabled")
+    s = state()
+    if name in s["skills"]:
+        cur = set(s["skills"][name].get("agents", []))
+        s["skills"][name]["agents"] = sorted(cur - set(agents))
+        save_state(s)
+    return rc
+
+
+def cmd_enable(args) -> int:
+    return enable_skill(args.name, resolve_agents(args.agent))
+
+
+def cmd_disable(args) -> int:
+    return disable_skill(args.name, resolve_agents(args.agent))
+
+
+def cmd_sync(args) -> int:
+    s = backfill_state()
+    wanted = args.agent
+    rc = 0
+    for name in canonical_names():
+        entry = s["skills"].get(name, {})
+        agents = [a for a in (entry.get("agents") or [])
+                  if AGENTS.get(a, {}).get("skills_mode") == "projection"]
+        if wanted:
+            sel = set(resolve_agents(wanted))
+            agents = [a for a in agents if a in sel]
+        if not agents:
+            continue
+        print(f"{name}")
+        rc = max(rc, enable_skill(name, agents, quiet=False))
+    return rc
+
+
+# ---------------------------------------------------------------- install / update / remove
+def copy_staged(src: str, name: str) -> str:
+    dst = canonical_for(name)
+    if os.path.exists(dst):
+        die(f"canonical already exists: {dst} (use update/remove first)")
+    ensure_dir(CANON)
+    staging = os.path.join(STATE_DIR, "staging", f"{name}.{int(time.time())}")
+    ensure_dir(STATE_DIR)
+    shutil.copytree(src, staging, symlinks=True)
+    if not os.path.isfile(os.path.join(staging, "SKILL.md")):
+        shutil.rmtree(staging, ignore_errors=True)
+        die(f"not a skill (missing SKILL.md): {src}")
+    os.replace(staging, dst)
+    return dst
+
+
+def replace_tree_in_place(src: str, dst: str) -> None:
+    """Copy src over dst while preserving existing dst inodes (and hardlinks)."""
+    src_files, dst_files = file_map(src), file_map(dst)
+    for rel in sorted(set(dst_files) - set(src_files), reverse=True):
+        p = os.path.join(dst, rel)
+        try:
+            os.unlink(p)
+        except FileNotFoundError:
+            pass
+    for rel in sorted(src_files):
+        s, t = os.path.join(src, rel), os.path.join(dst, rel)
+        ensure_dir(os.path.dirname(t))
+        if os.path.isdir(t) and not os.path.islink(t):
+            shutil.rmtree(t)
+        elif os.path.lexists(t) and (os.path.islink(t) or not os.path.isfile(t)):
+            os.unlink(t)
+        shutil.copy2(s, t, follow_symlinks=False)
+    for root, dirs, _files in os.walk(dst, topdown=False):
+        for d in dirs:
+            p = os.path.join(root, d)
+            if os.path.isdir(p) and not os.path.islink(p) and not os.listdir(p):
+                os.rmdir(p)
+
+
+def projected_agents_for_skill(name: str) -> list[str]:
+    cp = canonical_for(name)
+    out = []
+    for agent, d in skill_dirs().items():
+        p = os.path.join(d, name)
+        if os.path.islink(p) and is_managed_link(p):
+            out.append(agent)
+        elif os.path.isdir(p) and tree_is_hardlinked(p, cp):
+            out.append(agent)
+    return sorted(out)
+
+
+def refresh_projections(name: str, cp: str, agents: list[str], force: bool = False) -> int:
+    """Recreate managed projections after an in-place canonical update."""
+    rc = 0
+    for agent in agents:
+        d = agent_skill_dir(agent)
+        p = os.path.join(d, name)
+        if not os.path.isdir(d):
+            continue
+        if os.path.lexists(p):
+            if os.path.islink(p) or os.path.isdir(p):
+                if force or os.path.islink(p) or tree_is_hardlinked(p, cp) or tree_hash(p) == tree_hash(cp):
+                    if os.path.islink(p):
+                        os.unlink(p)
+                    else:
+                        shutil.rmtree(p)
+                else:
+                    print(f"  ! {agent}: projection changed; left untouched: {p}")
+                    rc = 2
+                    continue
+            else:
+                os.unlink(p)
+        hardlink_tree(cp, p)
+    return rc
+
+
+def cmd_install(args) -> int:
+    src = expand(args.source)
+    is_git = src.startswith(("http://", "https://", "git@", "ssh://")) or src.endswith(".git")
+    name = args.name
+    clone_dir = None
+
+    if is_git:
+        tmp = os.path.join(STATE_DIR, "tmp", f"clone-{int(time.time())}")
+        ensure_dir(os.path.dirname(tmp))
+        print(f"cloning {src} ...")
+        subprocess.run(["git", "clone", "--depth", "1", src, tmp], check=True)
+        clone_dir = tmp
+        src = os.path.join(tmp, args.subpath) if args.subpath else tmp
+        if not name:
+            name = os.path.basename(src.rstrip("/"))
+    else:
+        if not os.path.isdir(src):
+            die(f"source not found: {src}")
+        if not name:
+            name = os.path.basename(src.rstrip("/"))
+
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name or ""):
+        die(f"invalid skill name: {name!r}")
+
+    print(f"installing {name} from {src}")
+    dst = copy_staged(src, name)
+    if clone_dir:
+        shutil.rmtree(clone_dir, ignore_errors=True)
+    print(f"  canonical: {dst}")
+    rc = enable_skill(name, resolve_agents(args.agent))
+    s = state()
+    s["skills"].setdefault(name, {}).update({
+        "source": args.source,
+        "type": "git" if is_git else "local",
+        "subpath": args.subpath,
+        "hash": tree_hash(dst),
+        "updated_at": now(),
+    })
+    save_state(s)
+    return rc
+
+
+def cmd_update(args) -> int:
+    if not args.all and not args.name:
+        die("update requires a skill name or --all")
+    s = state()
+    targets = canonical_names() if args.all else [args.name]
+    rc = 0
+    for name in targets:
+        entry = s["skills"].get(name)
+        if not entry:
+            print(f"  ? {name}: not managed by agentctl; skipped")
+            continue
+        src = entry.get("source")
+        if not src:
+            print(f"  ? {name}: no source recorded; skipped")
+            continue
+        if entry.get("type") != "git":
+            print(f"  ? {name}: local source, nothing to pull")
+            continue
+        tmp = os.path.join(STATE_DIR, "tmp", f"update-{name}-{int(time.time())}")
+        ensure_dir(os.path.dirname(tmp))
+        subprocess.run(["git", "clone", "--depth", "1", src, tmp], check=True)
+        sub = entry.get("subpath")
+        new_src = os.path.join(tmp, sub) if sub else tmp
+        if not os.path.isfile(os.path.join(new_src, "SKILL.md")):
+            print(f"  ! {name}: upstream has no SKILL.md; skipped")
+            shutil.rmtree(tmp, ignore_errors=True)
+            rc = 2
+            continue
+        dst = canonical_for(name)
+        backup = os.path.join(TRASH_DIR, f"{name}.{int(time.time())}.old")
+        ensure_dir(os.path.dirname(backup))
+        shutil.copytree(dst, backup, symlinks=True)
+        projected = projected_agents_for_skill(name)
+        try:
+            replace_tree_in_place(new_src, dst)
+            refresh_projections(name, dst, projected, force=True)
+        except Exception:
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            shutil.copytree(backup, dst, symlinks=True)
+            refresh_projections(name, dst, projected, force=True)
+            raise
+        shutil.rmtree(tmp, ignore_errors=True)
+        h = tree_hash(dst)
+        entry["hash"] = h
+        entry["updated_at"] = now()
+        print(f"  + {name}: updated (hash {h[:12]})")
+    save_state(s)
+    return rc
+
+
+def cmd_remove(args) -> int:
+    name = args.name
+    cp = canonical_for(name)
+    if not os.path.exists(cp):
+        die(f"skill not found in canonical store: {name}")
+    if not args.apply:
+        print(f"DRY-RUN: would unlink {name} from all agents and move canonical to trash")
+        print("Re-run with --apply to execute.")
+        return 0
+    for agent, d in skill_dirs().items():
+        p = os.path.join(d, name)
+        if os.path.islink(p) and is_managed_link(p):
+            os.unlink(p)
+            print(f"  - {agent}: unlinked")
+        elif os.path.isdir(p) and tree_is_hardlinked(p, cp):
+            shutil.rmtree(p)
+            print(f"  - {agent}: unlinked")
+        elif os.path.exists(p):
+            print(f"  ! {agent}: unmanaged entry kept: {p}")
+    trash = os.path.join(TRASH_DIR, f"{name}.{int(time.time())}")
+    ensure_dir(TRASH_DIR)
+    shutil.move(cp, trash)
+    print(f"  moved canonical -> {trash}")
+    s = state()
+    s["skills"].pop(name, None)
+    save_state(s)
+    return 0
+
+
+# ---------------------------------------------------------------- status / doctor
+def cmd_status(args) -> int:
+    sc = scan()
+    if args.json:
+        print(json.dumps(sc, ensure_ascii=False, indent=2))
+        return 0
+    print("canonical store:", sc["canonical"])
+    print(f"  skills: {sc['canonical_count']}   size: {human(sc['canonical_bytes'])}")
+    print()
+    print(f"{'agent':<10} {'total':>6} {'links':>6} {'copies':>7} {'broken':>7}")
+    for a, d in sc["agents"].items():
+        print(f"{a:<10} {d['total']:>6} {d['links']:>6} {d['dirs']:>7} {d['broken']:>7}")
+    for a, d in sc.get("consumers", {}).items():
+        print(f"{a:<10} {'consumer':>6}  via {d['path']} ({d.get('config') or 'config'})")
+    print()
+    print(f"duplicate copies: {len(sc['duplicates'])} skills, ~{human(sc['duplicate_bytes'])}")
+    print(f"content conflicts: {len(sc['conflicts'])}")
+    for c in sc["conflicts"]:
+        print(f"  ! {c['name']}: {', '.join(c['agents'])}")
+    if sc["duplicates"]:
+        print("  run `agentctl adopt` to see the convergence plan")
+    return 0
+
+
+def cmd_list(args) -> int:
+    names = canonical_names()
+    s = state()
+    observed = observed_agents_map()
+    if args.json:
+        out = []
+        for n in names:
+            e = s["skills"].get(n, {})
+            out.append({"name": n, "agents": observed.get(n, []),
+                        "type": e.get("type", "local"), "source": e.get("source")})
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0
+    print(f"{'skill':<42} {'agents':<24} source")
+    for n in names:
+        e = s["skills"].get(n, {})
+        print(f"{n:<42} {','.join(observed.get(n, [])) or '-':<24} {e.get('source') or 'local'}")
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    sc = scan()
+    problems = []
+    for a, d in sc["agents"].items():
+        for e in d["entries"]:
+            if e["type"] == "symlink" and not e["valid"]:
+                problems.append(("broken-link", a, e["name"]))
+    for c in sc["conflicts"]:
+        problems.append(("content-conflict", ",".join(c["agents"]), c["name"]))
+    if sc["duplicates"]:
+        problems.append(("duplicate-copies", str(len(sc["duplicates"])),
+                         f"~{human(sc['duplicate_bytes'])}"))
+    for a, d in sc["agents"].items():
+        for e in d["entries"]:
+            if e["type"] == "symlink" and not is_managed_link(os.path.join(d["path"], e["name"])):
+                problems.append(("foreign-link", a, e["name"]))
+
+    cc_settings_path = os.path.join(HOME, ".cc-switch", "settings.json")
+    cc_db = os.path.join(HOME, ".cc-switch", "cc-switch.db")
+    if os.path.exists(cc_settings_path) or os.path.exists(cc_db):
+        cc_settings = load_json(cc_settings_path, {})
+        sync_method = str(cc_settings.get("skillSyncMethod", "")).lower()
+        storage = str(cc_settings.get("skillStorageLocation", "")).lower()
+        # cc-switch only accepts auto/symlink/copy. symlink+unified shares the
+        # agentctl store without creating copies and is safe for coexistence.
+        if sync_method == "symlink" and storage == "unified":
+            problems.append(("note", "cc-switch", f"skill sync={sync_method}, storage={storage or 'unknown'}"))
+        elif sync_method in ("off", "disabled", "none", "manual"):
+            problems.append(("note", "cc-switch", f"skill sync={sync_method}, storage={storage or 'unknown'}"))
+        else:
+            problems.append(("cc-switch-skill-sync", sync_method or "unknown",
+                             f"storage={storage or 'unknown'}; "
+                             "set skill sync to symlink with unified storage, or off"))
+
+    # MCP registry must never contain a literal credential.
+    raw_registry = load_json(MCP_FILE, {})
+    leaked = []
+    if isinstance(raw_registry, dict):
+        for name, entry in raw_registry.get("servers", {}).items():
+            if not isinstance(entry, dict):
+                continue
+            spec = entry.get("spec", {})
+            for section in ("env", "headers"):
+                values = spec.get(section, {}) if isinstance(spec, dict) else {}
+                if not isinstance(values, dict):
+                    continue
+                for key, value in values.items():
+                    if secret_field(key, value):
+                        leaked.append(f"{name}.{section}.{key}")
+    if leaked:
+        problems.append(("plaintext-secret", "mcp.json", ", ".join(sorted(leaked))))
+
+    # A server defined independently in several agents is a drift/duplication risk
+    # until it is adopted and synced from the registry.
+    by_name: dict[str, list[str]] = {}
+    for agent in AGENTS:
+        for name in read_mcp(agent):
+            by_name.setdefault(name, []).append(agent)
+    for name, agents in sorted(by_name.items()):
+        if len(agents) > 1 and name not in load_registry()["servers"]:
+            problems.append(("mcp-unmanaged-duplicate", name, ",".join(sorted(agents))))
+
+    plugin_groups: dict[str, list[str]] = {}
+    for agent, group in plugin_inventory().items():
+        for name, entry in group.get("plugins", {}).items():
+            if entry.get("state") in ("enabled", "present") and not name.endswith(".json"):
+                plugin_groups.setdefault(plugin_base_name(name), []).append(agent)
+    for name, agents in sorted(plugin_groups.items()):
+        if len(set(agents)) > 1:
+            problems.append(("plugin-shared", name, ",".join(sorted(set(agents)))))
+
+    for probe, label in (
+        (os.path.join(HOME, ".local", "bin", "hk"), "HarnessKit"),
+    ):
+        if os.path.exists(probe):
+            problems.append(("note", label, "installed; use `hk audit` as a read-only security scan"))
+
+    if args.json:
+        print(json.dumps({"problems": [{"kind": k, "where": w, "what": x} for k, w, x in problems]},
+                         ensure_ascii=False, indent=2))
+        return 0
+    if not problems:
+        print("OK: no structural problems detected.")
+        return 0
+    for k, w, x in problems:
+        print(f"[{k}] {w}: {x}")
+    return 0
+
+
+# ---------------------------------------------------------------- MCP
+def load_jsonc(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            s = f.read()
+    except FileNotFoundError:
+        return {}
+    out, i, in_str, esc = [], 0, False, False
+    while i < len(s):
+        ch = s[i]
+        if in_str:
+            out.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < len(s) and s[i + 1] == "/":
+            while i < len(s) and s[i] != "\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < len(s) and s[i + 1] == "*":
+            i += 2
+            while i + 1 < len(s) and not (s[i] == "*" and s[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    try:
+        return json.loads("".join(out))
+    except json.JSONDecodeError:
+        return {}
+
+
+def read_mcp(agent: str) -> dict:
+    cfg = AGENTS[agent]
+    fmt = cfg["mcp_format"]
+    path = agent_mcp_path(agent)
+    if fmt == "claude-json":
+        d = load_json(path, {})
+        return d.get("mcpServers", {})
+    if fmt == "gemini-json":
+        d = load_json(path, {})
+        return d.get("mcpServers", {})
+    if fmt == "opencode-jsonc":
+        d = load_jsonc(path)
+        return d.get("mcp", {})
+    if fmt == "codex-toml":
+        try:
+            import tomllib
+            with open(path, "rb") as f:
+                d = tomllib.load(f)
+            return d.get("mcp_servers", {})
+        except FileNotFoundError:
+            return {}
+        except Exception:
+            return {}
+    return {}
+
+
+def read_codex_handwritten() -> dict:
+    """Parse Codex config.toml ignoring the agentctl-managed block."""
+    import tomllib
+    path = agent_mcp_path("codex")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        return {}
+    text = re.sub(r"\n?# >>> agentctl:mcp >>>.*?# <<< agentctl:mcp <<<\n?", "\n", text, flags=re.S)
+    try:
+        return tomllib.loads(text).get("mcp_servers", {})
+    except Exception:
+        return {}
+
+
+def normalize_mcp(spec: dict) -> dict:
+    """Normalize to a portable shape: {type, command, args, env, url, headers}."""
+    out = {}
+    if isinstance(spec.get("command"), list):
+        command = spec["command"]
+        if not command:
+            return {"type": "stdio", "command": "", "args": []}
+        out["type"] = "stdio"
+        out["command"] = command[0]
+        out["args"] = command[1:]
+        if spec.get("env"):
+            out["env"] = spec["env"]
+    elif "command" in spec:
+        out["type"] = "stdio"
+        out["command"] = spec["command"]
+        out["args"] = spec.get("args", [])
+        if spec.get("env"):
+            out["env"] = spec["env"]
+    elif spec.get("type") in ("http", "sse", "remote") or "url" in spec:
+        out["type"] = "http" if spec.get("type") != "sse" else "sse"
+        out["url"] = spec.get("url") or spec.get("httpUrl")
+        if spec.get("headers"):
+            out["headers"] = spec["headers"]
+        if spec.get("environment"):
+            out["env"] = spec["environment"]
+    else:
+        out.update(spec)
+    return out
+
+
+def mcp_env_name(key: str) -> str:
+    """Turn an env/header key into a portable environment variable name."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", key).upper()
+
+
+def secret_field(key: str, value) -> bool:
+    value = str(value)
+    if ENV_PLACEHOLDER_RE.match(value):
+        return False
+    return bool(SECRET_KEY_RE.search(key) or SECRET_VALUE_RE.match(value))
+
+
+def sanitize_mcp_spec(spec: dict) -> tuple[dict, int]:
+    """Return a registry-safe spec and the number of masked secret fields."""
+    out = json.loads(json.dumps(normalize_mcp(spec), ensure_ascii=False))
+    masked = 0
+    for section in ("env", "headers"):
+        values = out.get(section)
+        if not isinstance(values, dict):
+            continue
+        for key, value in list(values.items()):
+            if secret_field(key, value):
+                values[key] = "${" + mcp_env_name(key) + "}"
+                masked += 1
+    return out, masked
+
+
+def resolve_mcp_secrets(spec: dict, current: dict | None = None) -> tuple[dict, list[str]]:
+    """Expand ${ENV} placeholders; fall back to the agent's existing value.
+
+    This lets an adopted MCP keep its current local credential without ever
+    copying that credential into the portable registry.
+    """
+    out = json.loads(json.dumps(normalize_mcp(spec), ensure_ascii=False))
+    current = normalize_mcp(current or {})
+    missing: list[str] = []
+    for section in ("env", "headers"):
+        values = out.get(section)
+        if not isinstance(values, dict):
+            continue
+        old = current.get(section, {}) if isinstance(current.get(section), dict) else {}
+        for key, value in list(values.items()):
+            m = ENV_PLACEHOLDER_RE.match(str(value))
+            if not m:
+                continue
+            env_name = m.group(1)
+            if env_name in os.environ and os.environ[env_name]:
+                values[key] = os.environ[env_name]
+            elif old.get(key) and not ENV_PLACEHOLDER_RE.match(str(old.get(key))):
+                values[key] = old[key]
+            else:
+                missing.append(env_name)
+    return out, sorted(set(missing))
+
+
+def load_registry() -> dict:
+    """Load the local MCP registry, migrating the former flat format."""
+    raw = load_json(MCP_FILE, {})
+    if isinstance(raw, dict) and raw.get("version") == 2 and isinstance(raw.get("servers"), dict):
+        raw["version"] = 2
+        for name, entry in list(raw["servers"].items()):
+            if not isinstance(entry, dict):
+                raw["servers"].pop(name, None)
+                continue
+            safe, _ = sanitize_mcp_spec(entry.get("spec", {}))
+            entry["spec"] = safe
+            entry["agents"] = sorted(set(entry.get("agents", [])))
+        return raw
+    servers = {}
+    for name, value in raw.items() if isinstance(raw, dict) else []:
+        if name in ("version", "servers") or not isinstance(value, dict):
+            continue
+        spec, _ = sanitize_mcp_spec(value)
+        servers[name] = {
+            "spec": spec,
+            "agents": sorted(AGENTS),
+            "source": "legacy",
+            "owned": True,
+        }
+    return {"version": 2, "servers": servers}
+
+
+def save_registry(registry: dict) -> None:
+    registry["version"] = 2
+    save_json(MCP_FILE, registry)
+
+
+def cmd_mcp_list(args) -> int:
+    registry = load_registry()["servers"]
+    actual: dict[str, dict] = {}
+    for a in AGENTS:
+        for name, spec in read_mcp(a).items():
+            safe, _ = sanitize_mcp_spec(spec)
+            actual.setdefault(name, {})[a] = safe
+    if args.json:
+        safe_registry = {}
+        for name, entry in registry.items():
+            safe_registry[name] = dict(entry)
+            safe_spec, _ = sanitize_mcp_spec(entry.get("spec", {}))
+            safe_registry[name]["spec"] = safe_spec
+        print(json.dumps({"registry": safe_registry, "actual": actual},
+                         ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    names = sorted(set(registry) | set(actual))
+    if not names:
+        print("no MCP servers found")
+        return 0
+    print(f"{'server':<32} {'registry':<26} {'present':<26} transport")
+    for name in names:
+        reg = registry.get(name, {})
+        per = actual.get(name, {})
+        kinds = sorted({v.get("type", "?") for v in per.values()})
+        if not kinds and reg.get("spec"):
+            kinds = [normalize_mcp(reg["spec"]).get("type", "?")]
+        reg_agents = ",".join(reg.get("agents", [])) or "-"
+        print(f"{name:<32} {reg_agents:<26} {','.join(sorted(per)) or '-':<26} {','.join(kinds)}")
+    print("\nregistry = agentctl-managed intent; present = entries currently found in agent configs")
+    return 0
+
+
+def write_mcp(agent: str, servers: dict, prune: set[str] | None = None) -> None:
+    cfg = AGENTS[agent]
+    if not cfg["mcp_write"]:
+        print(f"  ! {agent}: write disabled ({cfg['mcp_format']}); skipped")
+        return
+    fmt, path = cfg["mcp_format"], agent_mcp_path(agent)
+    if fmt in ("claude-json", "gemini-json"):
+        d = load_json(path, {})
+        backup = path + ".agentctl.bak"
+        if os.path.exists(path) and not os.path.exists(backup):
+            shutil.copy2(path, backup)
+        current = d.get("mcpServers", {})
+        if not isinstance(current, dict):
+            current = {}
+        for name in prune or set():
+            current.pop(name, None)
+        current.update(servers)
+        d["mcpServers"] = current
+        save_json(path, d)
+        print(f"  + {agent}: managed={len(servers)} pruned={len(prune or set())} total={len(current)}")
+    elif fmt == "codex-toml":
+        lines = []
+        for name, spec in sorted(servers.items()):
+            s = normalize_mcp(spec)
+            lines.append(f"[mcp_servers.{name}]")
+            if s.get("command"):
+                lines.append(f"command = {json.dumps(s['command'])}")
+            if s.get("args"):
+                lines.append("args = [" + ", ".join(json.dumps(x) for x in s["args"]) + "]")
+            if s.get("url"):
+                lines.append(f"url = {json.dumps(s['url'])}")
+            lines.append("")
+            if s.get("env"):
+                lines.append(f"[mcp_servers.{name}.env]")
+                for k, v in sorted(s["env"].items()):
+                    lines.append(f"{k} = {json.dumps(str(v))}")
+                lines.append("")
+            if s.get("headers"):
+                lines.append(f"[mcp_servers.{name}.headers]")
+                for k, v in sorted(s["headers"].items()):
+                    lines.append(f"{k} = {json.dumps(str(v))}")
+                lines.append("")
+        block = "\n".join(lines).rstrip() + "\n"
+        try:
+            text = open(path, encoding="utf-8").read()
+        except FileNotFoundError:
+            text = ""
+        text = re.sub(r"\n?# >>> agentctl:mcp >>>.*?# <<< agentctl:mcp <<<\n?", "\n", text, flags=re.S)
+        if os.path.exists(path):
+            shutil.copy2(path, path + ".agentctl.bak")
+        if servers:
+            text = (text.rstrip() + "\n\n# >>> agentctl:mcp >>>\n" +
+                    block + "# <<< agentctl:mcp <<<\n")
+        else:
+            text = text.rstrip() + "\n"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f"  + {agent}: wrote managed block with {len(servers)} MCP servers")
+
+
+def cmd_mcp_add(args) -> int:
+    spec = json.loads(args.spec)
+    if "url" not in spec and "command" not in spec:
+        die("MCP spec must contain 'command' or 'url'")
+    safe, masked = sanitize_mcp_spec(spec)
+    registry = load_registry()
+    registry["servers"][args.name] = {
+        "spec": safe,
+        "agents": resolve_agents(args.agent),
+        "source": "manual",
+        "owned": True,
+        "added_at": now(),
+    }
+    save_registry(registry)
+    print(f"registered {args.name} in {MCP_FILE}")
+    if masked:
+        print(f"  ! masked {masked} secret field(s) as ${{ENV_NAME}}; export them before sync")
+    if args.apply:
+        return cmd_mcp_sync(argparse.Namespace(agent=args.agent))
+    print("run `agentctl mcp sync` to push to agents")
+    return 0
+
+
+def cmd_mcp_adopt(args) -> int:
+    """Import existing per-agent MCP servers into the local registry."""
+    reg_doc = load_registry()
+    registry = reg_doc["servers"]
+    seen: dict[str, tuple[dict, str]] = {}
+    conflicts: dict[str, list[str]] = {}
+    imported = 0
+    changed = False
+    for agent in resolve_agents(args.agent, capability="mcp"):
+        for name, raw in sorted(read_mcp(agent).items()):
+            spec, _ = sanitize_mcp_spec(raw)
+            if name in registry:
+                entry = registry[name]
+                if entry.get("spec") != spec:
+                    conflicts.setdefault(name, []).append(agent)
+                merged = sorted(set(entry.get("agents", [])) | {agent})
+                if merged != entry.get("agents", []):
+                    entry["agents"] = merged
+                    changed = True
+                continue
+            if name in seen:
+                prev, prev_agent = seen[name]
+                if prev != spec:
+                    conflicts.setdefault(name, []).extend([prev_agent, agent])
+                else:
+                    entry = registry[name]
+                    merged = sorted(set(entry.get("agents", [])) | {agent})
+                    if merged != entry.get("agents", []):
+                        entry["agents"] = merged
+                        changed = True
+                continue
+            seen[name] = (spec, agent)
+            registry[name] = {
+                "spec": spec,
+                "agents": [agent],
+                "source": "adopted",
+                "owned": True,
+                "added_at": now(),
+            }
+            imported += 1
+            changed = True
+    if imported or conflicts or changed:
+        save_registry(reg_doc)
+    print(f"registry: {MCP_FILE}")
+    print(f"imported: {imported}   total: {len(registry)}")
+    if conflicts:
+        for name, agents in sorted(conflicts.items()):
+            print(f"  ! {name}: differing specs in {', '.join(sorted(set(agents)))}; kept existing")
+    print("review the local registry, then run `agentctl mcp sync` to project it")
+    return 0
+
+
+def cmd_mcp_remove(args) -> int:
+    registry = load_registry()
+    entry = registry["servers"].get(args.name)
+    if not entry:
+        die(f"not in managed MCP registry: {args.name}")
+    targets = [a for a in resolve_agents(args.agent, capability="mcp")
+               if a in set(entry.get("agents", []))]
+    if not args.apply:
+        print(f"DRY-RUN: would remove {args.name} from registry and from: "
+              f"{', '.join(targets) or '-'}")
+        print("Re-run with --apply to execute.")
+        return 0
+    del registry["servers"][args.name]
+    save_registry(registry)
+    for agent in targets:
+        sync_agent_mcp(agent, registry["servers"], prune={args.name})
+    s = state()
+    for agent in targets:
+        current = set(s.get("mcp_managed", {}).get(agent, []))
+        s.setdefault("mcp_managed", {})[agent] = sorted(current - {args.name})
+    save_state(s)
+    print(f"removed {args.name} from registry and managed agent configs")
+    return 0
+
+
+def sync_agent_mcp(agent: str, servers: dict, prune: set[str] | None = None) -> set[str]:
+    """Project only registry-owned entries; all foreign entries stay untouched."""
+    cfg = AGENTS[agent]
+    if not cfg["mcp_write"]:
+        print(f"  ! {agent}: read-only MCP adapter; registry left unchanged")
+        return set()
+    current = read_mcp(agent)
+    desired: dict[str, dict] = {}
+    for name, entry in servers.items():
+        if agent not in entry.get("agents", []):
+            continue
+        spec, missing = resolve_mcp_secrets(entry.get("spec", {}), current.get(name, {}))
+        if missing:
+            print(f"  ! {agent}: {name} skipped; unresolved secret(s): {', '.join(missing)}")
+            continue
+        desired[name] = spec
+    if agent == "codex":
+        handwritten = read_codex_handwritten()
+        overlap = sorted(set(desired) & set(handwritten))
+        if overlap:
+            print(f"  ! codex: left handwritten entries untouched: {', '.join(overlap)}")
+            desired = {k: v for k, v in desired.items() if k not in handwritten}
+    write_mcp(agent, desired, prune=prune)
+    return set(desired)
+
+
+def cmd_mcp_sync(args) -> int:
+    registry = load_registry()["servers"]
+    s = state()
+    for agent in resolve_agents(args.agent, capability="mcp"):
+        desired = {n for n, e in registry.items() if agent in e.get("agents", [])}
+        previous = set(s.get("mcp_managed", {}).get(agent, []))
+        applied = sync_agent_mcp(agent, registry, prune=previous - desired)
+        s.setdefault("mcp_managed", {})[agent] = sorted(applied)
+    save_state(s)
+    return 0
+
+
+# ---------------------------------------------------------------- plugin inventory
+def plugin_base_name(name: str) -> str:
+    return os.path.basename(name.split("@", 1)[0].rstrip("/")) or name
+
+
+def plugin_entry(state: str, path: str | None = None, source: str | None = None,
+                 version: str | None = None, plugin_id: str | None = None) -> dict:
+    out = {"state": state}
+    if plugin_id:
+        out["id"] = plugin_id
+    if version:
+        out["version"] = version
+    if path:
+        out["path"] = path
+    if source:
+        out["source"] = source
+    return out
+
+
+def native_json(cmd: list[str], timeout: int = 30):
+    """Run a read-only native CLI query, returning parsed JSON or None."""
+    if not shutil.which(cmd[0]):
+        return None
+    try:
+        proc = subprocess.run(
+            cmd, check=False, text=True, capture_output=True, timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def plugin_marketplaces_from_config(agent: str) -> dict[str, str]:
+    if agent == "claude":
+        data = load_json(os.path.join(HOME, ".claude", "plugins", "known_marketplaces.json"), {})
+        return {
+            name: (value.get("source", {}).get("url") or value.get("source", {}).get("repo") or "configured")
+            for name, value in sorted(data.items()) if isinstance(value, dict)
+        }
+    if agent == "codex":
+        path = os.path.join(HOME, ".codex", "config.toml")
+        try:
+            import tomllib
+            with open(path, "rb") as f:
+                cfg = tomllib.load(f)
+        except Exception:
+            return {}
+        return {
+            name: (value.get("source") or value.get("url") or "configured")
+            for name, value in sorted(cfg.get("marketplaces", {}).items())
+            if isinstance(value, dict)
+        }
+    return {}
+
+
+def claude_plugin_inventory() -> dict:
+    settings = os.path.join(HOME, ".claude", "settings.json")
+    known = os.path.join(HOME, ".claude", "plugins", "known_marketplaces.json")
+    if not os.path.exists(settings) and not os.path.isdir(os.path.join(HOME, ".claude", "plugins")):
+        return {}
+
+    plugins: dict[str, dict] = {}
+    data = native_json(["claude", "plugin", "list", "--json"])
+    source = "cli" if isinstance(data, list) else "config"
+    if isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            plugin_id = str(item.get("id") or "")
+            if not plugin_id:
+                continue
+            plugins[plugin_id] = plugin_entry(
+                "enabled" if item.get("enabled") else "installed",
+                path=item.get("installPath"),
+                source=plugin_id.split("@", 1)[1] if "@" in plugin_id else None,
+                version=item.get("version"),
+                plugin_id=plugin_id,
+            )
+    else:
+        for name, enabled in sorted(load_json(settings, {}).get("enabledPlugins", {}).items()):
+            plugins[name] = plugin_entry("enabled" if enabled else "disabled", plugin_id=name)
+
+    return {
+        "config": settings,
+        "source": source,
+        "capabilities": sorted(PLUGIN_CAPABILITIES["claude"]),
+        "marketplaces": plugin_marketplaces_from_config("claude") if os.path.exists(known) else {},
+        "plugins": plugins,
+    }
+
+
+def codex_plugin_inventory() -> dict:
+    config = os.path.join(HOME, ".codex", "config.toml")
+    if not os.path.exists(config) and not os.path.isdir(os.path.join(HOME, ".codex", "plugins")):
+        return {}
+
+    plugins: dict[str, dict] = {}
+    data = native_json(["codex", "plugin", "list", "--json"])
+    source = "cli" if isinstance(data, dict) and isinstance(data.get("installed"), list) else "config"
+    if source == "cli":
+        for item in data.get("installed", []):
+            if not isinstance(item, dict):
+                continue
+            plugin_id = str(item.get("pluginId") or item.get("name") or "")
+            if not plugin_id:
+                continue
+            plugins[plugin_id] = plugin_entry(
+                "enabled" if item.get("enabled") else "disabled",
+                path=(item.get("source") or {}).get("path") if isinstance(item.get("source"), dict) else None,
+                source=item.get("marketplaceName"),
+                version=item.get("version"),
+                plugin_id=plugin_id,
+            )
+    else:
+        try:
+            import tomllib
+            with open(config, "rb") as f:
+                cfg = tomllib.load(f)
+        except Exception:
+            cfg = {}
+        for name, value in sorted(cfg.get("plugins", {}).items()):
+            if not isinstance(value, dict):
+                continue
+            plugins[name] = plugin_entry(
+                "enabled" if value.get("enabled", True) else "disabled",
+                source=(value.get("marketplace") or (name.split("@", 1)[1] if "@" in name else None)),
+                plugin_id=name,
+            )
+
+    marketplaces = plugin_marketplaces_from_config("codex")
+    market_data = native_json(["codex", "plugin", "marketplace", "list", "--json"])
+    if isinstance(market_data, dict) and isinstance(market_data.get("marketplaces"), list):
+        marketplaces = {}
+        for item in market_data["marketplaces"]:
+            if not isinstance(item, dict) or not item.get("name"):
+                continue
+            ms = item.get("marketplaceSource") or {}
+            marketplaces[item["name"]] = ms.get("source") or item.get("root") or "configured"
+
+    return {
+        "config": config,
+        "source": source,
+        "capabilities": sorted(PLUGIN_CAPABILITIES["codex"]),
+        "marketplaces": marketplaces,
+        "plugins": plugins,
+    }
+
+
+def opencode_plugin_inventory() -> dict:
+    config = os.path.join(HOME, ".config", "opencode", "opencode.jsonc")
+    plugin_dir = os.path.join(HOME, ".config", "opencode", "plugins")
+    if not os.path.exists(config) and not os.path.isdir(plugin_dir):
+        return {}
+    cfg = load_jsonc(config)
+    listed = cfg.get("plugin") or cfg.get("plugins") or []
+    if isinstance(listed, str):
+        listed = [listed]
+    plugins = {}
+    for item in listed:
+        path = str(item).removeprefix("file://")
+        name = os.path.basename(path)
+        plugins[name] = plugin_entry("enabled", path=path, source="config", plugin_id=name)
+    if os.path.isdir(plugin_dir):
+        for name in sorted(os.listdir(plugin_dir)):
+            if name.startswith("."):
+                continue
+            path = os.path.join(plugin_dir, name)
+            plugins.setdefault(name, plugin_entry("present", path=path, source="directory", plugin_id=name))
+    return {
+        "config": config,
+        "source": "config",
+        "capabilities": sorted(PLUGIN_CAPABILITIES["opencode"]),
+        "plugins": plugins,
+    }
+
+
+def gemini_plugin_inventory() -> dict:
+    plugin_dir = os.path.join(HOME, ".gemini", "config", "plugins")
+    if not os.path.isdir(plugin_dir):
+        return {}
+    plugins = {}
+    for name in sorted(os.listdir(plugin_dir)):
+        if name.startswith("."):
+            continue
+        plugins[name] = plugin_entry("present", path=os.path.join(plugin_dir, name), plugin_id=name)
+    return {
+        "config": plugin_dir,
+        "source": "directory",
+        "capabilities": sorted(PLUGIN_CAPABILITIES["gemini"]),
+        "plugins": plugins,
+    }
+
+
+def plugin_inventory() -> dict:
+    out = {}
+    for agent, reader in (
+        ("claude", claude_plugin_inventory),
+        ("codex", codex_plugin_inventory),
+        ("opencode", opencode_plugin_inventory),
+        ("gemini", gemini_plugin_inventory),
+    ):
+        group = reader()
+        if group:
+            out[agent] = group
+    return out
+
+
+def plugin_is_visible(entry: dict) -> bool:
+    return entry.get("state") in ("enabled", "present")
+
+
+def plugin_native_command(agent: str, action: str, selector: str | None, args) -> list[str]:
+    """Translate one portable plugin action into a native CLI command."""
+    scope = getattr(args, "scope", "user") or "user"
+    marketplace = getattr(args, "marketplace", None)
+    yes = bool(getattr(args, "yes", False))
+
+    if agent == "claude":
+        if action in ("install", "update", "uninstall") and not selector:
+            die(f"plugin {action} --agent claude requires a plugin selector")
+        if action == "install":
+            cmd = ["claude", "plugin", "install", selector]
+            if marketplace:
+                cmd += ["--marketplace", marketplace]
+            cmd += ["-s", scope, "--json"]
+            if yes:
+                cmd += ["-y"]
+            return cmd
+        if action == "uninstall":
+            cmd = ["claude", "plugin", "uninstall", selector, "-s", scope, "--json"]
+            if getattr(args, "prune", False):
+                cmd += ["--prune"]
+            if getattr(args, "keep_data", False):
+                cmd += ["--keep-data"]
+            if yes:
+                cmd += ["-y"]
+            return cmd
+        if action == "update":
+            cmd = ["claude", "plugin", "update", selector, "-s", scope, "--json"]
+            if yes:
+                cmd += ["-y"]
+            return cmd
+        if action in ("enable", "disable"):
+            if not selector:
+                die(f"plugin {action} --agent claude requires a plugin selector")
+            return ["claude", "plugin", action, selector, "-s", scope, "--json"]
+
+    if agent == "codex":
+        if action in ("install", "uninstall"):
+            if not selector:
+                die(f"plugin {action} --agent codex requires a plugin selector")
+            if "@" not in selector and not marketplace:
+                die("Codex requires PLUGIN@MARKETPLACE or --marketplace for plugin add/remove")
+            verb = "add" if action == "install" else "remove"
+            cmd = ["codex", "plugin", verb, selector, "--json"]
+            if marketplace:
+                cmd += ["--marketplace", marketplace]
+            return cmd
+        if action == "update":
+            market = marketplace
+            if not market and selector and "@" in selector:
+                market = selector.split("@", 1)[1]
+            cmd = ["codex", "plugin", "marketplace", "upgrade"]
+            if market:
+                cmd.append(market)
+            cmd.append("--json")
+            return cmd
+
+    if agent == "opencode":
+        if action not in ("install", "update"):
+            die(f"opencode: plugin {action} is not supported by its CLI")
+        if not selector:
+            die(f"plugin {action} --agent opencode requires an npm module or path")
+        if scope != "user":
+            die("opencode plugin management only supports user/global scope")
+        cmd = ["opencode", "plugin", selector, "--global"]
+        if action == "update":
+            cmd.append("--force")
+        return cmd
+
+    die(f"{agent}: plugin {action} is not supported")
+    return []
+
+
+def cmd_plugin_action(args) -> int:
+    action = args.plugin_action
+    agents = resolve_agents(args.agent, capability="plugin")
+    if len(agents) != 1:
+        die("plugin changes require exactly one --agent (plugin IDs are ecosystem-specific)")
+    agent = agents[0]
+    if action not in PLUGIN_CAPABILITIES.get(agent, set()) and not (
+        action == "update" and "update-marketplace" in PLUGIN_CAPABILITIES.get(agent, set())
+    ):
+        print(f"agentctl: {agent}: no native `plugin {action}` capability", file=sys.stderr)
+        return 2
+
+    selector = getattr(args, "selector", None)
+    if action == "update" and agent == "codex":
+        # A marketplace refresh is the closest real primitive; the selector is
+        # used only to identify which marketplace snapshot to refresh.
+        pass
+    cmd = plugin_native_command(agent, action, selector, args)
+
+    if action == "install" and selector:
+        existing = []
+        for other, group in plugin_inventory().items():
+            if other == agent:
+                continue
+            for plugin_id, entry in group.get("plugins", {}).items():
+                if plugin_is_visible(entry) and plugin_base_name(plugin_id) == plugin_base_name(selector):
+                    existing.append(f"{other}:{plugin_id}")
+        if existing:
+            msg = "same plugin name is already visible to " + ", ".join(sorted(existing))
+            print(f"  ! {msg}")
+            if args.apply and not getattr(args, "allow_cross_agent", False):
+                print("  refusing cross-agent duplicate install; pass --allow-cross-agent to override",
+                      file=sys.stderr)
+                return 2
+
+    print(f"{'APPLY' if args.apply else 'DRY-RUN'}: {agent}")
+    print(f"  $ {shlex.join(cmd)}")
+    if action == "update" and agent == "codex":
+        print("  note: Codex refreshes a marketplace snapshot, not one plugin in isolation")
+    if not args.apply:
+        print("Re-run with --apply to execute.")
+        return 0
+
+    try:
+        proc = subprocess.run(cmd, check=False, text=True, capture_output=True, timeout=600)
+    except FileNotFoundError:
+        print(f"agentctl: native CLI not found: {cmd[0]}", file=sys.stderr)
+        return 127
+    except subprocess.TimeoutExpired:
+        print(f"agentctl: {cmd[0]} timed out", file=sys.stderr)
+        return 124
+
+    result = {"agent": agent, "action": action, "command": cmd, "returncode": proc.returncode}
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif proc.returncode == 0:
+        print(f"  ok: {agent} plugin {action} completed")
+    else:
+        detail = (proc.stderr or proc.stdout).strip()
+        if detail:
+            print(detail[-4000:], file=sys.stderr)
+        print(f"  failed: exit {proc.returncode}", file=sys.stderr)
+    return proc.returncode
+
+
+def cmd_plugin_list(args) -> int:
+    out = plugin_inventory()
+    base_to_agents: dict[str, list[str]] = {}
+    for agent, group in out.items():
+        for name, entry in group.get("plugins", {}).items():
+            if plugin_is_visible(entry) and not name.endswith(".json"):
+                base_to_agents.setdefault(plugin_base_name(name), []).append(agent)
+    duplicates = {k: sorted(set(v)) for k, v in base_to_agents.items() if len(set(v)) > 1}
+
+    if args.json:
+        out["duplicates"] = duplicates
+        print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if not out:
+        print("no plugin registries detected")
+        return 0
+    for agent, group in out.items():
+        caps = ", ".join(group.get("capabilities", [])) or "list"
+        print(f"{agent}:  [{group.get('source', 'unknown')}] capabilities={caps}")
+        for name, entry in sorted(group.get("plugins", {}).items()):
+            version = f" v{entry['version']}" if entry.get("version") else ""
+            suffix = f"  {entry['path']}" if entry.get("path") else ""
+            print(f"  {name:<48} {entry['state']}{version}{suffix}")
+    if duplicates:
+        print("\nshared plugin names (separate ecosystem caches; review before adding another):")
+        for name, agents in sorted(duplicates.items()):
+            print(f"  {name}: {', '.join(agents)}")
+    print("\nnote: plugins are ecosystem-specific. agentctl delegates writes to each native CLI,")
+    print("      does not copy caches, and reports capability gaps instead of faking parity.")
+    return 0
+
+
+# ---------------------------------------------------------------- lock
+def cmd_lock(args) -> int:
+    """Export a portable lockfile into the repo (no secrets, no bodies)."""
+    s = state()
+    observed = observed_agents_map()
+    out = {"version": 1, "canonical": "~/.agents/skills", "generated_at": now(), "skills": {}}
+    for name in canonical_names():
+        e = s["skills"].get(name, {})
+        source = e.get("source")
+        if e.get("type", "local") == "local":
+            source = None  # local paths are machine-specific; keep the lock portable
+        out["skills"][name] = {
+            "source": source,
+            "type": e.get("type", "local"),
+            "hash": tree_hash(canonical_for(name)),
+            "agents": observed.get(name, []),
+        }
+    dest = expand(args.output) if args.output else os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "manifest", LOCK_NAME)
+    save_json(dest, out)
+    print(f"wrote {dest} ({len(out['skills'])} skills)")
+    return 0
+
+
+# ---------------------------------------------------------------- main
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="agentctl", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("status", help="one-screen health/duplication summary")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_status)
+
+    sp = sub.add_parser("list", help="list canonical skills and their agents")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_list)
+
+    sp = sub.add_parser("adopt", help="converge existing agent copies into canonical (dry-run by default)")
+    sp.add_argument("--apply", action="store_true")
+    sp.set_defaults(func=lambda a: do_adopt(a.apply))
+
+    sp = sub.add_parser("enable", help="enable a skill for agent(s)")
+    sp.add_argument("name")
+    sp.add_argument("--agent", default="all", help="all|claude,codex,...")
+    sp.set_defaults(func=cmd_enable)
+
+    sp = sub.add_parser("disable", help="disable a skill for agent(s)")
+    sp.add_argument("name")
+    sp.add_argument("--agent", default="all")
+    sp.set_defaults(func=cmd_disable)
+
+    sp = sub.add_parser("sync", help="re-apply state to all agents")
+    sp.add_argument("--agent", default=None)
+    sp.set_defaults(func=cmd_sync)
+
+    sp = sub.add_parser("install", help="install a skill from a local path or git repo")
+    sp.add_argument("source")
+    sp.add_argument("--name")
+    sp.add_argument("--subpath", default=None)
+    sp.add_argument("--agent", default="all")
+    sp.set_defaults(func=cmd_install)
+
+    sp = sub.add_parser("update", help="update git-backed skills")
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--all", action="store_true")
+    sp.set_defaults(func=cmd_update)
+
+    sp = sub.add_parser("remove", help="remove a skill from all agents (dry-run by default)")
+    sp.add_argument("name")
+    sp.add_argument("--apply", action="store_true")
+    sp.set_defaults(func=cmd_remove)
+
+    sp = sub.add_parser("doctor", help="detect broken links, conflicts, duplication")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(func=cmd_doctor)
+
+    sp = sub.add_parser("lock", help="export portable lockfile into the repo")
+    sp.add_argument("--output")
+    sp.set_defaults(func=cmd_lock)
+
+    mp = sub.add_parser("mcp", help="MCP inventory / registry / sync")
+    msub = mp.add_subparsers(dest="mcp_cmd", required=True)
+    m1 = msub.add_parser("list"); m1.add_argument("--json", action="store_true"); m1.set_defaults(func=cmd_mcp_list)
+    m2 = msub.add_parser("add"); m2.add_argument("name"); m2.add_argument("spec"); m2.add_argument("--agent", default="all"); m2.add_argument("--apply", action="store_true"); m2.set_defaults(func=cmd_mcp_add)
+    m3 = msub.add_parser("adopt"); m3.add_argument("--agent", default="all"); m3.set_defaults(func=cmd_mcp_adopt)
+    m4 = msub.add_parser("remove"); m4.add_argument("name"); m4.add_argument("--agent", default="all"); m4.add_argument("--apply", action="store_true"); m4.set_defaults(func=cmd_mcp_remove)
+    m5 = msub.add_parser("sync"); m5.add_argument("--agent", default="all"); m5.set_defaults(func=cmd_mcp_sync)
+
+    pl = sub.add_parser("plugin", help="plugin inventory / native install / update / remove")
+    plsub = pl.add_subparsers(dest="plugin_cmd", required=True)
+    p1 = plsub.add_parser("list"); p1.add_argument("--json", action="store_true"); p1.set_defaults(func=cmd_plugin_list)
+
+    for action, help_text in (
+        ("install", "install through the target agent's native CLI (dry-run by default)"),
+        ("uninstall", "uninstall through the native CLI (dry-run by default)"),
+        ("update", "update through the native CLI (dry-run by default)"),
+        ("enable", "enable through the native CLI (dry-run by default)"),
+        ("disable", "disable through the native CLI (dry-run by default)"),
+    ):
+        pa = plsub.add_parser(action, help=help_text)
+        pa.add_argument("selector", nargs="?" if action == "update" else None)
+        pa.add_argument("--agent", required=True, help="claude|codex|opencode (one agent only)")
+        pa.add_argument("--marketplace")
+        pa.add_argument("--scope", default="user", choices=["user", "project", "local"])
+        pa.add_argument("--apply", action="store_true")
+        pa.add_argument("--yes", action="store_true", help="accept native confirmation prompts")
+        pa.add_argument("--json", action="store_true")
+        pa.add_argument("--allow-cross-agent", action="store_true")
+        if action == "uninstall":
+            pa.add_argument("--prune", action="store_true")
+            pa.add_argument("--keep-data", action="store_true")
+        pa.set_defaults(func=cmd_plugin_action, plugin_action=action)
+
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    ensure_dir(STATE_DIR)
+    if not os.path.isdir(CANON):
+        ensure_dir(CANON)
+    return args.func(args) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
