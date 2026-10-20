@@ -33,6 +33,7 @@
 - 理解先于行动：先看清问题与上下文，再动手改代码。
 - 证据优先于猜测：区分 confirmed facts / reasonable inference / assumptions / unknowns。
 - 最小复杂度：满足需求的最简方案；没有具体理由不引入框架、抽象、服务、容器或依赖。
+- 计算下沉与代码化思考（Think in Code）：面向数据统计、依赖分析、AST 抽取、符号扫描与日志排查等批量只读任务，把 LLM 当作“代码生成器”而非“数据吞吐处理器”（Program the analysis, not compute it）。严禁以大量文件全量读取硬灌数十万字节入上下文；优先编写一次性短脚本（Python/Shell/Node.js）在本地执行过滤，仅将提炼后的聚合统计送回上下文。
 - 验证后才声称完成：改完、跑通、有证据，才说“完成”。
 - 保留用户意图，最小化无关改动。
 
@@ -113,6 +114,7 @@
 - 卡住时先复现问题，再定位根因，不凭空猜测。
 - 修复基于根因，不无脑改代码。
 - 提供可复制的验证命令。
+- **命令输出防爆安全带（Output Explosion Safeguard）**：对于可能产生大量输出的命令（全量测试套件、构建编译长日志、网络抓取、系统日志输出、`git log`），强制使用管道截断或关键行过滤（如 `| grep -E "FAIL|ERROR|Summary"`, `| head -n 30`, `| tail -n 30` 或重定向至日志文件），严禁裸命令无节制刷屏淹没长程上下文。
 
 ## 8. 研究规则（Research Rules）
 
@@ -390,3 +392,24 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 2. **终端现场快照支持 (Workspace Snapshots)**：
    - 支持通过 `collab-tmux` 工具为项目分配独立的后台 `tmux` 会话与专属窗口（`claude`, `codex`）；
    - 支持跨天或暂停时执行快照保存（保存终端当前上下文与运行状态），下次一键原地恢复。
+
+### 14.15 计算下沉与上下文虚拟化防御 (Think in Code & Context Virtualization · 借鉴 Context-Mode)
+
+为解决复杂项目多轮交互中海量工具原始数据（日志、全量文件读取、构建输出）冲垮上下文窗口，以及宿主会话压缩失忆问题，引入以下四项上下文工程防护：
+
+1. **Think in Code 计算逻辑下沉**：
+   - 核心范式：**将 LLM 视为代码生成器而非数据流吞吐器**（*Program the analysis, not compute it*）；
+   - 约束场景：对 10 个以上文件的结构探索、符号/函数统计、依赖关系扫描、长日志诊断等探索任务，严禁用连续大量原生工具（如数十次 `read_file`、全量 `grep`）将数十万字节未经加工的原始数据硬塞入上下文；
+   - 实践要求：优先编写单次短小精悍的内联脚本（Python `python3 -c "..."` 或 Node.js / Shell）在终端执行，通过本地计算与过滤，**仅将提炼后的一行或数行统计/分析结果送回上下文**（Token 消耗降低 98%+）。
+
+2. **命令输出防爆安全带 (Output Explosion Safeguard)**：
+   - 任何可能输出超过 50 行的命令（如全量测试、CMake/colcon 构建日志、`git log`、日志巡检）：
+   - 强制使用管道过滤或重定向（如 `| grep -E "FAIL|ERROR|Summary"`, `| head -n 30`, `| tail -n 30`, 或 `command > output.log 2>&1 && tail -n 30 output.log`）；
+   - 杜绝裸命令刷屏污染长程注意力。
+
+3. **PreCompact 钩子与接力黑板抗失忆联动**：
+   - 联动 Claude Code 的 `PreCompact` 钩子，通过轻量级工具 `collab-precompact`（软链至 `~/.local/bin/collab-precompact`），在宿主进行不可逆上下文截断前夕触发；
+   - 自动将当前 Git 分支状态、脏文件列表、最近提交与当前未结 Invariants 强制持久化写入 `.agent/SESSION_STATE.md`，彻底消除长会话压缩后的“上下文失忆”。
+
+4. **治理数据流向而非压抑自然表达 (No Prose-Style Enforcement)**：
+   - 上下文优化的核心是阻断工具输出垃圾文本的注入，**严禁在系统提示词中强加极端的字数抑制或反自然表达惩罚**，保持大模型在架构推演、边界裁决与代码编写时的严密思考深度。

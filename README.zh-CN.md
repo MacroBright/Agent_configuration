@@ -185,6 +185,7 @@ cd ~/agent-config
 1. **认知反思模型 (源自 Hindsight)**：摒弃粗放的文本堆砌，建立 `Retain-Recall-Reflect` 三动词循环。遇到死锁或架构纠偏时，强制升华为 `{触发场景 → 踩坑诱因 → 永久法则}` 结构化反思实体沉淀至长程图谱，受 Token 预算约束精准召回。
 2. **工单原子锁与熔断安全带 (源自 Paperclip)**：黑板子任务状态细化为 `[PENDING]` $\rightarrow$ `[LOCKED: Agent]` $\rightarrow$ `[REVIEWING]` $\rightarrow$ `[COMPLETED]`，杜绝多 Agent 任务冲突；单轮协作引入默认 5 轮迭代上限，超限自动熔断并上报“人类董事会 (Board)”。
 3. **工位拓扑与终端快照 (源自 OpenRig)**：确立 `Seat 1 (Recon)`、`Seat 2 (Lead)`、`Seat 3 (Coder)` 稳定工位边界；提供轻量命令行工具 `collab-tmux`，支持在终端一键唤醒多 Agent 协同分屏并生成现场快照 (`collab-tmux snapshot`)。
+4. **上下文虚拟化与计算下沉 (源自 Context-Mode)**：倡导 "Think in Code" 范式（将 LLM 视为代码生成器而非数据吞吐处理器，分析任务编写内联微脚本在沙箱执行，仅回传精炼结果，节约 98% Token）；联动 PreCompact 钩子在会话压缩前自动执行 `collab-precompact` 持久化脏文件与未结任务；强制全量测试与构建输出开启管道截断（防爆安全带）。
 
 ---
 

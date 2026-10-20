@@ -25,6 +25,10 @@
     "huggingface": {
       "command": "npx",
       "args": ["-y", "huggingface-mcp-server"]
+    },
+    "context-mode": {
+      "command": "npx",
+      "args": ["-y", "context-mode"]
     }
   }
 }

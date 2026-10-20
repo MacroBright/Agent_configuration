@@ -4,6 +4,14 @@
     "ANTHROPIC_AUTH_TOKEN": "PROXY_MANAGED",
     "ANTHROPIC_BASE_URL": "{{BASE_URL}}"
   },
+  "hooks": {
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": "collab-precompact"
+      }
+    ]
+  },
   "permissions": {
     "deny": [
       "Bash(rm -rf *)",

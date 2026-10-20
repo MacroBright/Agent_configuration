@@ -48,6 +48,17 @@ if [ -d "${HOME_DIR}/.codex" ]; then
   mkdir -p "${HOME_DIR}/.agent-memory"
   touch "${HOME_DIR}/.agent-memory/knowledge-graph.jsonl"
   say "已写入通用与机器人领域项目级模板"
+
+  # 协作 CLI 工具软链至 ~/.local/bin
+  mkdir -p "${HOME_DIR}/.local/bin"
+  for scr in collab-init collab-tmux collab-precompact; do
+    if [ -f "$REPO_DIR/scripts/${scr}.sh" ]; then
+      chmod +x "$REPO_DIR/scripts/${scr}.sh"
+      ln -sf "$REPO_DIR/scripts/${scr}.sh" "${HOME_DIR}/.local/bin/${scr}"
+    fi
+  done
+  say "已配置 ~/.local/bin/collab-* 协作工具软链"
+
   if [ ! -f "${HOME_DIR}/.codex/USER_CONTEXT.md" ]; then
     cp "$REPO_DIR/global/USER_CONTEXT.md.template" "${HOME_DIR}/.codex/USER_CONTEXT.md"
     say "已生成 ~/.codex/USER_CONTEXT.md，请打开填写占位符"
