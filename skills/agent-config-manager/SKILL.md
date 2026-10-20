@@ -94,7 +94,9 @@ agentctl mcp list
 agentctl mcp add <name> '{"command":"...","args":[...],"env":{"KEY":"..."}}'
 agentctl mcp add <name> '{"url":"https://...","headers":{...}}'
 agentctl mcp sync [--agent all]
-agentctl mcp remove <name>
+agentctl mcp enable  <name> --agent claude [--apply]
+agentctl mcp disable <name> --agent claude [--apply]
+agentctl mcp remove  <name> [--apply]
 ```
 
 - Claude Code, Gemini and OpenCode are JSON-based and merged.

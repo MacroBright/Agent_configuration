@@ -246,6 +246,34 @@ print(json.dumps({{"ok": True}}))
         self.assertEqual(data["mcp_servers"]["demo"]["command"], "npx")
         self.assertIn("# >>> agentctl:mcp >>>", config.read_text(encoding="utf-8"))
 
+    def test_mcp_sync_preserves_gemini_metadata_and_uses_native_fields(self) -> None:
+        gemini_json = self.home / ".gemini/config/mcp_config.json"
+        gemini_json.write_text(
+            json.dumps({"mcpServers": {
+                "keep": {
+                    "$typeName": "cascade.Plugin",
+                    "command": "keep-server",
+                    "args": [],
+                },
+            }}),
+            encoding="utf-8",
+        )
+        spec = json.dumps({"command": "demo-server"})
+        self.run_cli("mcp", "add", "demo", spec, "--agent", "gemini", "--apply")
+
+        servers = json.loads(gemini_json.read_text(encoding="utf-8"))["mcpServers"]
+        self.assertEqual(servers["keep"]["$typeName"], "cascade.Plugin")
+        self.assertNotIn("type", servers["keep"])
+        self.assertEqual(servers["demo"]["command"], "demo-server")
+        self.assertNotIn("type", servers["demo"])
+
+        remote = json.dumps({"url": "https://example.com/mcp"})
+        self.run_cli("mcp", "add", "remote", remote, "--agent", "gemini", "--apply")
+        servers = json.loads(gemini_json.read_text(encoding="utf-8"))["mcpServers"]
+        self.assertEqual(servers["remote"]["httpUrl"], "https://example.com/mcp")
+        self.assertNotIn("url", servers["remote"])
+        self.assertNotIn("type", servers["remote"])
+
     def test_mcp_secret_is_masked_in_registry_and_resolved_on_sync(self) -> None:
         spec = json.dumps({"command": "secret-server", "env": {"API_TOKEN": "plaintext-value"}})
         self.run_cli("mcp", "add", "secret", spec, "--agent", "claude")
@@ -257,6 +285,86 @@ print(json.dumps({{"ok": True}}))
         self.run_cli("mcp", "sync", "--agent", "claude", env={"API_TOKEN": "from-environment"})
         data = json.loads((self.home / ".claude.json").read_text(encoding="utf-8"))
         self.assertEqual(data["mcpServers"]["secret"]["env"]["API_TOKEN"], "from-environment")
+
+    def test_mcp_disable_is_single_agent_and_keeps_registry(self) -> None:
+        claude_json = self.home / ".claude.json"
+        gemini_json = self.home / ".gemini/config/mcp_config.json"
+        shared = {"command": "shared-server", "args": []}
+        claude_json.write_text(
+            json.dumps({"mcpServers": {
+                "shared": shared,
+                "claude-only": {"command": "claude-server"},
+            }}),
+            encoding="utf-8",
+        )
+        gemini_json.write_text(
+            json.dumps({"mcpServers": {"shared": shared}}),
+            encoding="utf-8",
+        )
+        self.run_cli("mcp", "adopt")
+
+        dry = self.run_cli("mcp", "disable", "shared", "--agent", "claude")
+        self.assertIn("DRY-RUN", dry.stdout)
+        self.assertIn("shared", json.loads(claude_json.read_text(encoding="utf-8"))["mcpServers"])
+
+        self.run_cli("mcp", "disable", "shared", "--agent", "claude", "--apply")
+        claude = json.loads(claude_json.read_text(encoding="utf-8"))["mcpServers"]
+        gemini = json.loads(gemini_json.read_text(encoding="utf-8"))["mcpServers"]
+        self.assertNotIn("shared", claude)
+        self.assertIn("claude-only", claude)
+        self.assertIn("shared", gemini)
+
+        registry = json.loads(
+            (self.home / ".agents/agentctl/mcp.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(registry["servers"]["shared"]["agents"], ["gemini"])
+
+    def test_mcp_enable_restores_one_agent_only(self) -> None:
+        claude_json = self.home / ".claude.json"
+        gemini_json = self.home / ".gemini/config/mcp_config.json"
+        shared = {"command": "shared-server", "args": []}
+        claude_json.write_text(json.dumps({"mcpServers": {"shared": shared}}), encoding="utf-8")
+        gemini_json.write_text(json.dumps({"mcpServers": {"shared": shared}}), encoding="utf-8")
+        self.run_cli("mcp", "adopt")
+        self.run_cli("mcp", "disable", "shared", "--agent", "claude", "--apply")
+        gemini_before = gemini_json.read_text(encoding="utf-8")
+
+        dry = self.run_cli("mcp", "enable", "shared", "--agent", "claude")
+        self.assertIn("DRY-RUN", dry.stdout)
+        self.assertNotIn("shared", json.loads(claude_json.read_text(encoding="utf-8"))["mcpServers"])
+
+        self.run_cli("mcp", "enable", "shared", "--agent", "claude", "--apply")
+        claude = json.loads(claude_json.read_text(encoding="utf-8"))["mcpServers"]
+        self.assertEqual(claude["shared"]["command"], "shared-server")
+        self.assertEqual(gemini_json.read_text(encoding="utf-8"), gemini_before)
+
+    def test_mcp_disable_leaves_foreign_entry_untouched(self) -> None:
+        claude_json = self.home / ".claude.json"
+        claude_json.write_text(
+            json.dumps({"mcpServers": {"shared": {"command": "shared-server"}}}),
+            encoding="utf-8",
+        )
+        self.run_cli("mcp", "adopt")
+        data = json.loads(claude_json.read_text(encoding="utf-8"))
+        data["mcpServers"]["handwritten"] = {"command": "echo"}
+        claude_json.write_text(json.dumps(data), encoding="utf-8")
+
+        self.run_cli("mcp", "disable", "shared", "--agent", "claude", "--apply")
+        claude = json.loads(claude_json.read_text(encoding="utf-8"))["mcpServers"]
+        self.assertNotIn("shared", claude)
+        self.assertEqual(claude["handwritten"]["command"], "echo")
+
+    def test_mcp_disable_rejects_read_only_agent(self) -> None:
+        (self.home / ".claude.json").write_text(
+            json.dumps({"mcpServers": {"shared": {"command": "shared-server"}}}),
+            encoding="utf-8",
+        )
+        self.run_cli("mcp", "adopt", "--agent", "claude")
+        proc = self.run_cli(
+            "mcp", "disable", "shared", "--agent", "opencode", check=False
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("read-only", proc.stderr)
 
     def test_doctor_accepts_cc_switch_symlink_into_unified_store(self) -> None:
         settings = self.home / ".cc-switch/settings.json"

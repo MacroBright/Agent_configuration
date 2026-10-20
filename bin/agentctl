@@ -1265,7 +1265,25 @@ def write_mcp(agent: str, servers: dict, prune: set[str] | None = None) -> None:
             current = {}
         for name in prune or set():
             current.pop(name, None)
-        current.update(servers)
+        for name, spec in servers.items():
+            if fmt == "gemini-json":
+                # Antigravity/Gemini entries may carry protobuf metadata and
+                # use httpUrl instead of url.  Preserve metadata and emit the
+                # native field names rather than Claude's portable shape.
+                merged = dict(current.get(name, {})) if isinstance(current.get(name), dict) else {}
+                for key in ("command", "args", "env", "url", "httpUrl", "headers", "type", "environment"):
+                    merged.pop(key, None)
+                portable = json.loads(json.dumps(spec, ensure_ascii=False))
+                if portable.get("type") == "http":
+                    if portable.get("url"):
+                        portable["httpUrl"] = portable.pop("url")
+                    portable.pop("type", None)
+                elif portable.get("type") == "stdio":
+                    portable.pop("type", None)
+                merged.update(portable)
+                current[name] = merged
+            else:
+                current[name] = spec
         d["mcpServers"] = current
         save_json(path, d)
         print(f"  + {agent}: managed={len(servers)} pruned={len(prune or set())} total={len(current)}")
@@ -1406,6 +1424,70 @@ def cmd_mcp_remove(args) -> int:
         s.setdefault("mcp_managed", {})[agent] = sorted(current - {args.name})
     save_state(s)
     print(f"removed {args.name} from registry and managed agent configs")
+    return 0
+
+
+def _mcp_single_agent(selector: str, action: str) -> str:
+    agents = resolve_agents(selector, capability="mcp")
+    if len(agents) != 1:
+        die(f"mcp {action} requires exactly one --agent (got: {selector})")
+    agent = agents[0]
+    if not AGENTS[agent].get("mcp_write"):
+        die(f"{agent}: MCP config is read-only; cannot {action} managed entries")
+    return agent
+
+
+def cmd_mcp_enable(args) -> int:
+    """Enable an existing registry entry for one agent without touching others."""
+    registry = load_registry()
+    entry = registry["servers"].get(args.name)
+    if not entry:
+        die(f"not in managed MCP registry: {args.name} (run `agentctl mcp adopt` first)")
+    agent = _mcp_single_agent(args.agent, "enable")
+    current = sorted(set(entry.get("agents", [])))
+    if agent in current:
+        print(f"{args.name} is already enabled for {agent}; reconciling config")
+    elif not args.apply:
+        print(f"DRY-RUN: would enable {args.name} for {agent}")
+        print(f"  agents: {','.join(current) or '-'} -> {','.join(sorted(set(current) | {agent}))}")
+        print("Re-run with --apply to execute.")
+        return 0
+    if agent not in current:
+        entry["agents"] = sorted(set(current) | {agent})
+        save_registry(registry)
+    applied = sync_agent_mcp(agent, registry["servers"])
+    s = state()
+    s.setdefault("mcp_managed", {})[agent] = sorted(applied)
+    save_state(s)
+    print(f"enabled {args.name} for {agent} (managed={len(applied)})")
+    return 0
+
+
+def cmd_mcp_disable(args) -> int:
+    """Disable a registry entry for one agent; the registry entry is kept."""
+    registry = load_registry()
+    entry = registry["servers"].get(args.name)
+    if not entry:
+        die(f"not in managed MCP registry: {args.name} (run `agentctl mcp adopt` first)")
+    agent = _mcp_single_agent(args.agent, "disable")
+    current = sorted(set(entry.get("agents", [])))
+    if agent not in current:
+        print(f"{args.name} is not enabled for {agent}; nothing to do")
+        return 0
+    remaining = sorted(set(current) - {agent})
+    if not args.apply:
+        print(f"DRY-RUN: would disable {args.name} for {agent}")
+        print(f"  agents: {','.join(current)} -> {','.join(remaining) or '-'}")
+        print(f"  config: remove {args.name} from {AGENTS[agent]['label']} only")
+        print("Re-run with --apply to execute.")
+        return 0
+    entry["agents"] = remaining
+    save_registry(registry)
+    applied = sync_agent_mcp(agent, registry["servers"], prune={args.name})
+    s = state()
+    s.setdefault("mcp_managed", {})[agent] = sorted(applied)
+    save_state(s)
+    print(f"disabled {args.name} for {agent}; registry entry kept for other agents")
     return 0
 
 
@@ -1921,6 +2003,10 @@ def build_parser() -> argparse.ArgumentParser:
     m3 = msub.add_parser("adopt"); m3.add_argument("--agent", default="all"); m3.set_defaults(func=cmd_mcp_adopt)
     m4 = msub.add_parser("remove"); m4.add_argument("name"); m4.add_argument("--agent", default="all"); m4.add_argument("--apply", action="store_true"); m4.set_defaults(func=cmd_mcp_remove)
     m5 = msub.add_parser("sync"); m5.add_argument("--agent", default="all"); m5.set_defaults(func=cmd_mcp_sync)
+    m6 = msub.add_parser("enable", help="enable a registry MCP for one agent (dry-run by default)")
+    m6.add_argument("name"); m6.add_argument("--agent", required=True); m6.add_argument("--apply", action="store_true"); m6.set_defaults(func=cmd_mcp_enable)
+    m7 = msub.add_parser("disable", help="disable a registry MCP for one agent (dry-run by default)")
+    m7.add_argument("name"); m7.add_argument("--agent", required=True); m7.add_argument("--apply", action="store_true"); m7.set_defaults(func=cmd_mcp_disable)
 
     pl = sub.add_parser("plugin", help="plugin inventory / native install / update / remove")
     plsub = pl.add_subparsers(dest="plugin_cmd", required=True)

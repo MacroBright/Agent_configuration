@@ -179,9 +179,15 @@ agentctl mcp list
 agentctl mcp add <name> '{"command":"npx","args":["-y","pkg"]}'
 agentctl mcp add <name> '{"url":"https://example.com/mcp"}'
 agentctl mcp sync [--agent all]
-agentctl mcp remove <name> --apply
 agentctl mcp adopt
+agentctl mcp enable  <name> --agent claude [--apply]
+agentctl mcp disable <name> --agent claude [--apply]
+agentctl mcp remove  <name> [--agent all] [--apply]
 ```
+
+- `enable` / `disable` change one agent only; the registry entry and other agents stay untouched.
+- Both are dry-run by default; add `--apply` to rewrite the target agent's config.
+- `remove` deletes the registry entry itself, so prefer `disable` for ordinary de-duplication.
 
 Claude and Gemini use merged JSON. Codex uses a marked TOML block, so handwritten MCP entries are preserved. OpenCode is read-only for now because rewriting JSONC would drop comments. Secret-looking values are stored as `${ENV_NAME}`; the registry never contains the literal token.
 

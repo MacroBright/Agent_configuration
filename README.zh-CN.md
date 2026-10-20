@@ -179,9 +179,15 @@ agentctl mcp list
 agentctl mcp add <name> '{"command":"npx","args":["-y","pkg"]}'
 agentctl mcp add <name> '{"url":"https://example.com/mcp"}'
 agentctl mcp sync [--agent all]
-agentctl mcp remove <name> --apply
 agentctl mcp adopt
+agentctl mcp enable  <name> --agent claude [--apply]
+agentctl mcp disable <name> --agent claude [--apply]
+agentctl mcp remove  <name> [--agent all] [--apply]
 ```
+
+- `enable` / `disable` 只改一个 Agent；注册表条目与其他 Agent 保持不变。
+- 两者默认 dry-run，加 `--apply` 才写入目标 Agent 配置。
+- `remove` 会删除注册表条目本身；日常去重优先用 `disable`。
 
 Claude 与 Gemini 使用 JSON 合并；Codex 使用带标记的 TOML 区块，手写 MCP 条目会被保留；OpenCode 目前只读，因为重写 JSONC 会丢失注释。疑似密钥的值统一存为 `${ENV_NAME}`，注册表中不会出现真实 Token。
 
