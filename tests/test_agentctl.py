@@ -286,6 +286,94 @@ print(json.dumps({{"ok": True}}))
         data = json.loads((self.home / ".claude.json").read_text(encoding="utf-8"))
         self.assertEqual(data["mcpServers"]["secret"]["env"]["API_TOKEN"], "from-environment")
 
+    def test_mcp_duplicates_reports_same_agent_and_version_drift(self) -> None:
+        (self.home / ".claude.json").write_text(
+            json.dumps({"mcpServers": {
+                "pkg-a": {"command": "uvx", "args": ["demo-mcp@1.0.0"]},
+                "pkg-b": {"command": "uvx", "args": ["demo-mcp@2.0.0"]},
+            }}),
+            encoding="utf-8",
+        )
+        report = json.loads(self.run_cli("mcp", "duplicates", "--json").stdout)
+        kinds = {issue["kind"] for issue in report["issues"]}
+        self.assertIn("same-agent", kinds)
+        self.assertIn("version-drift", kinds)
+        self.assertIn("uv:demo-mcp", {group["key"] for group in report["groups"]})
+
+    def test_mcp_duplicates_reports_cross_agent_version_drift(self) -> None:
+        (self.home / ".claude.json").write_text(
+            json.dumps({"mcpServers": {
+                "markitdown": {"command": "uvx", "args": ["markitdown-mcp@1.0.0"]},
+            }}),
+            encoding="utf-8",
+        )
+        (self.home / ".gemini/config/mcp_config.json").write_text(
+            json.dumps({"mcpServers": {
+                "markitdown": {"command": "uvx", "args": ["markitdown-mcp@2.0.0"]},
+            }}),
+            encoding="utf-8",
+        )
+        report = json.loads(self.run_cli("mcp", "duplicates", "--json").stdout)
+        issues = {(i["kind"], i["key"]) for i in report["issues"]}
+        self.assertIn(("version-drift", "uv:markitdown-mcp"), issues)
+
+    def test_mcp_duplicates_ignores_shared_identical_local_server(self) -> None:
+        spec = {"command": "python3", "args": ["/opt/ros-bridge/server.py"]}
+        (self.home / ".claude.json").write_text(
+            json.dumps({"mcpServers": {"ros2": spec}}), encoding="utf-8"
+        )
+        (self.home / ".gemini/config/mcp_config.json").write_text(
+            json.dumps({"mcpServers": {"ros2": spec}}), encoding="utf-8"
+        )
+        report = json.loads(self.run_cli("mcp", "duplicates", "--json").stdout)
+        self.assertEqual(report["issues"], [])
+        self.assertIn("script:/opt/ros-bridge/server.py",
+                      {group["key"] for group in report["groups"]})
+
+    def test_mcp_duplicates_detects_service_variants_without_leaking_secrets(self) -> None:
+        (self.home / ".claude.json").write_text(
+            json.dumps({"mcpServers": {
+                "github-http": {"type": "http", "url": "https://api.githubcopilot.com/mcp/"},
+            }}),
+            encoding="utf-8",
+        )
+        (self.home / ".gemini/config/mcp_config.json").write_text(
+            json.dumps({"mcpServers": {
+                "github-docker": {
+                    "command": "docker",
+                    "args": ["run", "-i", "--rm", "-e",
+                             "GITHUB_PERSONAL_ACCESS_TOKEN",
+                             "ghcr.io/github/github-mcp-server"],
+                    "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_should_not_print"},
+                },
+            }}),
+            encoding="utf-8",
+        )
+        proc = self.run_cli("mcp", "duplicates", "--json")
+        report = json.loads(proc.stdout)
+        self.assertIn("service-variants",
+                      {issue["kind"] for issue in report["issues"]})
+        self.assertNotIn("ghp_should_not_print", proc.stdout)
+        self.assertNotIn("ghp_should_not_print", proc.stderr)
+
+    def test_mcp_duplicates_skips_boolean_docker_flags(self) -> None:
+        (self.home / ".gemini/config/mcp_config.json").write_text(
+            json.dumps({"mcpServers": {
+                "demo": {
+                    "command": "docker",
+                    "args": ["run", "--rm", "ghcr.io/example/demo-mcp:1.2.3"],
+                },
+            }}),
+            encoding="utf-8",
+        )
+        report = json.loads(self.run_cli("mcp", "duplicates", "--json").stdout)
+        groups = {g["key"]: g for g in report["groups"]}
+        self.assertIn("docker:ghcr.io/example/demo-mcp", groups)
+        self.assertEqual(
+            groups["docker:ghcr.io/example/demo-mcp"]["variants"][0]["version"],
+            "1.2.3",
+        )
+
     def test_mcp_disable_is_single_agent_and_keeps_registry(self) -> None:
         claude_json = self.home / ".claude.json"
         gemini_json = self.home / ".gemini/config/mcp_config.json"

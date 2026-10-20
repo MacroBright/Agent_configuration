@@ -202,6 +202,14 @@ import sys, json
 d = json.load(sys.stdin)
 print("  MCP: actual=%s registry=%s" % (len(d.get("actual", {})), len(d.get("registry", {}))))
 '; then :; else echo "  ! MCP 清单读取失败"; fi
+  if "$AC" mcp duplicates --json 2>/dev/null | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+warn = {"same-agent", "version-drift", "same-agent-service"}
+for i in d.get("issues", []):
+    print("    [%s] %s: %s" % (i["kind"], i["key"], i["detail"]))
+sys.exit(1 if any(i.get("kind") in warn for i in d.get("issues", [])) else 0)
+'; then :; else echo "  ✗ MCP 存在同 Agent 重复或版本漂移"; FAIL=1; fi
   rm -f /tmp/agentctl-doctor.$$
 else
   echo "  ! 未安装 agentctl（跑 ./install.sh 或 ln -s <repo>/bin/agentctl ~/.local/bin/agentctl）"

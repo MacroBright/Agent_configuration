@@ -97,9 +97,12 @@ agentctl mcp sync [--agent all]
 agentctl mcp enable  <name> --agent claude [--apply]
 agentctl mcp disable <name> --agent claude [--apply]
 agentctl mcp remove  <name> [--apply]
+agentctl mcp duplicates [--json] [--all]
 ```
 
 - Claude Code, Gemini and OpenCode are JSON-based and merged.
+- `mcp duplicates` groups Docker images, `uvx`/`npx` packages, local scripts and
+  HTTP endpoints; it never prints env/header values.
 - Codex uses a marked TOML block (`# >>> agentctl:mcp >>>`). Handwritten entries
   with the same name are preserved and never duplicated.
 - OpenCode is read-only for now because JSONC comments would be lost.

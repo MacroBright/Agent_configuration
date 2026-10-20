@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 HOME = os.path.expanduser("~")
 CANON = os.path.join(HOME, ".agents", "skills")
@@ -987,6 +988,13 @@ def cmd_doctor(args) -> int:
         if len(agents) > 1 and name not in load_registry()["servers"]:
             problems.append(("mcp-unmanaged-duplicate", name, ",".join(sorted(agents))))
 
+    for issue in analyze_mcp_duplicates()["issues"]:
+        kind = issue["kind"]
+        if kind in ("name-drift", "service-variants"):
+            problems.append(("note", f"mcp-{kind}", f"{issue['key']}: {issue['detail']}"))
+        else:
+            problems.append((f"mcp-{kind}", issue["key"], issue["detail"]))
+
     plugin_groups: dict[str, list[str]] = {}
     for agent, group in plugin_inventory().items():
         for name, entry in group.get("plugins", {}).items():
@@ -1214,6 +1222,315 @@ def load_registry() -> dict:
 def save_registry(registry: dict) -> None:
     registry["version"] = 2
     save_json(MCP_FILE, registry)
+
+
+DOCKER_VALUE_OPTS = {
+    "-e", "--env", "--name", "-v", "--volume", "-p", "--publish",
+    "--network", "--net", "-w", "--workdir", "--entrypoint", "--mount",
+    "--add-host", "--env-file", "--label", "-u", "--user", "--platform",
+    "--restart", "--log-driver", "--log-opt", "--ulimit", "--cap-add",
+    "--cap-drop", "--device", "--security-opt", "--tmpfs", "--sysctl",
+    "--pid", "--ipc", "--hostname", "-h", "--dns", "--dns-search",
+    "--expose", "--link", "--volumes-from", "--stop-signal",
+    "--stop-timeout", "--health-cmd", "--health-interval",
+    "--health-retries", "--health-timeout", "--health-start-period",
+    "--gpus", "--runtime", "--shm-size", "--memory", "-m", "--cpus",
+    "--cidfile", "--cgroup-parent", "--group-add", "--isolation",
+    "--userns", "--uts", "--ip", "--mac-address", "--subnet", "--gateway",
+    "--ip-range", "--network-alias", "--annotation", "--attach", "-a",
+}
+
+# Boolean flags that never consume the following argument. Keeping these out
+# of DOCKER_VALUE_OPTS is essential: ``docker run --rm IMAGE`` must not skip
+# IMAGE as if it were the value of ``--rm``.
+DOCKER_FLAG_OPTS = {
+    "-d", "--detach", "-i", "--interactive", "-t", "--tty", "--rm",
+    "--privileged", "--init", "--read-only", "--no-healthcheck",
+}
+
+
+def split_package_version(ref: str) -> tuple[str, str | None]:
+    """Split ``pkg@version`` / ``pkg==version`` without breaking @scope/pkg."""
+    ref = re.sub(r"\[[^\]]*\]", "", (ref or "").strip())
+    if not ref:
+        return "", None
+    if "@" in ref[1:]:
+        idx = ref.rfind("@")
+        if idx > 0:
+            return ref[:idx], ref[idx + 1:] or None
+    if "==" in ref:
+        pkg, version = ref.split("==", 1)
+        if pkg:
+            return pkg, version or None
+    return ref, None
+
+
+def split_docker_image(image: str) -> tuple[str, str]:
+    """Return (repository, version); a missing tag means Docker's ``latest``."""
+    image = (image or "").strip()
+    if not image:
+        return "", "unknown"
+    if "@" in image:
+        repo, digest = image.split("@", 1)
+        return repo, "@" + digest
+    slash = image.rfind("/")
+    colon = image.rfind(":")
+    if colon > slash:
+        return image[:colon], image[colon + 1:] or "latest"
+    return image, "latest"
+
+
+def docker_image_arg(args: list[str]) -> str | None:
+    i = 1 if args and args[0] in ("run", "create") else 0
+    while i < len(args):
+        value = args[i]
+        if value == "--":
+            i += 1
+            break
+        if value.startswith("-"):
+            if "=" in value:
+                i += 1
+            elif value in DOCKER_VALUE_OPTS:
+                i += 2
+            elif value in DOCKER_FLAG_OPTS:
+                i += 1
+            else:
+                i += 1
+            continue
+        return value
+    return args[i] if i < len(args) else None
+
+
+PACKAGE_VALUE_OPTS = {
+    "--python", "--with", "--index", "--default-index", "--index-url",
+    "--extra-index-url", "--find-links", "--constraint", "--override",
+    "--refresh-package", "--reinstall-package", "--config-file", "--cache-dir",
+    "--link-mode", "--color", "--directory", "--project", "--env-file",
+    "--cache", "--userconfig", "--registry", "--node-options", "--call",
+}
+
+
+def package_arg(command: str, args: list[str]) -> str | None:
+    """Extract the package from uvx/npx/bunx/pnpm/yarn/npm invocations."""
+    i = 0
+    if command == "uv" and args[:2] == ["tool", "run"]:
+        i = 2
+    elif command in ("npm", "pnpm", "yarn") and args and args[0] in ("exec", "dlx"):
+        i = 1
+    while i < len(args):
+        value = args[i]
+        if value in ("-p", "--package", "--from"):
+            return args[i + 1] if i + 1 < len(args) else None
+        if value.startswith("--package=") or value.startswith("--from="):
+            return value.split("=", 1)[1]
+        if value in PACKAGE_VALUE_OPTS:
+            i += 2
+            continue
+        if value == "--":
+            i += 1
+            break
+        if value.startswith("-"):
+            i += 1
+            continue
+        return value
+    return args[i] if i < len(args) else None
+
+
+def safe_endpoint(url: str) -> str:
+    try:
+        p = urlsplit(str(url))
+    except ValueError:
+        return str(url).split("?", 1)[0].rstrip("/")
+    if not p.scheme and not p.netloc:
+        return str(url).split("?", 1)[0].rstrip("/")
+    host = (p.hostname or "").lower()
+    if p.port and not ((p.scheme == "http" and p.port == 80) or
+                       (p.scheme == "https" and p.port == 443)):
+        host = f"{host}:{p.port}"
+    path = p.path.rstrip("/") or "/"
+    return f"{p.scheme.lower() or 'http'}://{host}{path}"
+
+
+def mcp_identity(spec: dict) -> dict | None:
+    """Return a package identity used to find duplicate MCP definitions."""
+    s = normalize_mcp(spec)
+    if s.get("type") in ("http", "sse", "remote") or s.get("url"):
+        endpoint = safe_endpoint(s.get("url") or "")
+        if not endpoint or endpoint.endswith("://"):
+            return None
+        return {
+            "key": f"http:{endpoint}",
+            "package": endpoint,
+            "transport": s.get("type") or "http",
+            "version": None,
+            "service": service_family(endpoint),
+        }
+
+    command = os.path.basename(str(s.get("command") or ""))
+    args = [str(x) for x in s.get("args", []) or []]
+    if command in ("docker", "podman", "nerdctl"):
+        image = docker_image_arg(args)
+        if not image:
+            return None
+        repo, version = split_docker_image(image)
+        return {
+            "key": f"docker:{repo}",
+            "package": repo,
+            "transport": "docker",
+            "version": version,
+            "service": service_family(repo),
+        }
+    if command in ("uvx", "uv", "npx", "bunx", "pnpm", "yarn", "npm"):
+        ref = package_arg(command, args)
+        if not ref:
+            return None
+        package, version = split_package_version(ref)
+        if not package:
+            return None
+        manager = "uv" if command in ("uvx", "uv") else "npm"
+        return {
+            "key": f"{manager}:{package}",
+            "package": package,
+            "transport": command,
+            "version": version or "latest",
+            "service": service_family(package),
+        }
+    if command in ("python", "python3", "node", "bash", "sh"):
+        if "-m" in args:
+            idx = args.index("-m")
+            module = args[idx + 1] if idx + 1 < len(args) else ""
+            if module:
+                return {
+                    "key": f"{command}-module:{module}",
+                    "package": module,
+                    "transport": command,
+                    "version": None,
+                    "service": service_family(module),
+                }
+        script = next((a for a in args if not a.startswith("-")), None)
+        if not script:
+            return None
+        path = os.path.realpath(expand(script))
+        return {
+            "key": f"script:{path}",
+            "package": path,
+            "transport": command,
+            "version": None,
+            "service": service_family(path),
+        }
+    return None
+
+
+def service_family(value: str) -> str | None:
+    """Known services whose package/URL differs but whose role is the same."""
+    low = (value or "").lower()
+    if "github-mcp-server" in low or "api.githubcopilot.com/mcp" in low:
+        return "github"
+    if "markitdown" in low:
+        return "markitdown"
+    return None
+
+
+def analyze_mcp_duplicates() -> dict:
+    groups: dict[str, dict] = {}
+    for agent in sorted(AGENTS):
+        for name, spec in sorted(read_mcp(agent).items()):
+            ident = mcp_identity(spec)
+            if not ident:
+                continue
+            group = groups.setdefault(ident["key"], {
+                "key": ident["key"],
+                "package": ident["package"],
+                "service": ident["service"],
+                "variants": [],
+            })
+            group["variants"].append({
+                "agent": agent,
+                "name": name,
+                "package": ident["package"],
+                "transport": ident["transport"],
+                "version": ident["version"],
+            })
+
+    issues = []
+    for key, group in sorted(groups.items()):
+        variants = group["variants"]
+        by_agent: dict[str, list[dict]] = {}
+        for variant in variants:
+            by_agent.setdefault(variant["agent"], []).append(variant)
+        for agent, items in sorted(by_agent.items()):
+            names = sorted({item["name"] for item in items})
+            if len(names) > 1:
+                issues.append({
+                    "kind": "same-agent",
+                    "key": key,
+                    "detail": f"{agent}: {', '.join(names)}",
+                })
+        versions = sorted({str(v["version"]) for v in variants if v["version"]})
+        if len(versions) > 1:
+            detail = ", ".join(
+                f"{v['agent']}/{v['name']}={v['version']}"
+                for v in variants if v["version"]
+            )
+            issues.append({"kind": "version-drift", "key": key, "detail": detail})
+        names = sorted({v["name"] for v in variants})
+        agents = sorted({v["agent"] for v in variants})
+        if len(agents) > 1 and len(names) > 1 and len(versions) <= 1:
+            detail = ", ".join(f"{v['agent']}/{v['name']}" for v in variants)
+            issues.append({"kind": "name-drift", "key": key, "detail": detail})
+
+    # Detect the same service distributed in different ways (e.g. GitHub MCP
+    # via Docker in one agent and HTTP in another).
+    services: dict[str, list[dict]] = {}
+    for group in groups.values():
+        if group["service"]:
+            services.setdefault(group["service"], []).extend(group["variants"])
+    for service, variants in sorted(services.items()):
+        packages = {v["package"] for v in variants}
+        transports = {v["transport"] for v in variants}
+        agents = {v["agent"] for v in variants}
+        if len(packages) < 2 and len(transports) < 2:
+            continue
+        detail = ", ".join(
+            f"{v['agent']}/{v['name']}({v['transport']})" for v in variants
+        )
+        same_agent = sorted(a for a in agents
+                            if len({v["name"] for v in variants if v["agent"] == a}) > 1)
+        if same_agent:
+            issues.append({
+                "kind": "same-agent-service",
+                "key": f"service:{service}",
+                "detail": f"{', '.join(same_agent)}: {detail}",
+            })
+        else:
+            issues.append({
+                "kind": "service-variants",
+                "key": f"service:{service}",
+                "detail": detail,
+            })
+
+    return {"groups": [groups[k] for k in sorted(groups)], "issues": issues}
+
+
+def cmd_mcp_duplicates(args) -> int:
+    report = analyze_mcp_duplicates()
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if args.all:
+        for group in report["groups"]:
+            print(group["key"])
+            for v in group["variants"]:
+                version = f"  {v['version']}" if v.get("version") else ""
+                print(f"  {v['agent']:<8} {v['name']:<38} {v['transport']}{version}")
+        if report["issues"]:
+            print()
+    if not report["issues"]:
+        print("OK: no redundant MCP packages detected.")
+        return 0
+    for issue in report["issues"]:
+        print(f"[{issue['kind']}] {issue['key']}: {issue['detail']}")
+    return 0
 
 
 def cmd_mcp_list(args) -> int:
@@ -2007,6 +2324,8 @@ def build_parser() -> argparse.ArgumentParser:
     m6.add_argument("name"); m6.add_argument("--agent", required=True); m6.add_argument("--apply", action="store_true"); m6.set_defaults(func=cmd_mcp_enable)
     m7 = msub.add_parser("disable", help="disable a registry MCP for one agent (dry-run by default)")
     m7.add_argument("name"); m7.add_argument("--agent", required=True); m7.add_argument("--apply", action="store_true"); m7.set_defaults(func=cmd_mcp_disable)
+    m8 = msub.add_parser("duplicates", help="report the same MCP package under different names/versions")
+    m8.add_argument("--json", action="store_true"); m8.add_argument("--all", action="store_true"); m8.set_defaults(func=cmd_mcp_duplicates)
 
     pl = sub.add_parser("plugin", help="plugin inventory / native install / update / remove")
     plsub = pl.add_subparsers(dest="plugin_cmd", required=True)

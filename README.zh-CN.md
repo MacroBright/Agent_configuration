@@ -183,11 +183,13 @@ agentctl mcp adopt
 agentctl mcp enable  <name> --agent claude [--apply]
 agentctl mcp disable <name> --agent claude [--apply]
 agentctl mcp remove  <name> [--agent all] [--apply]
+agentctl mcp duplicates [--json] [--all]
 ```
 
 - `enable` / `disable` 只改一个 Agent；注册表条目与其他 Agent 保持不变。
 - 两者默认 dry-run，加 `--apply` 才写入目标 Agent 配置。
 - `remove` 会删除注册表条目本身；日常去重优先用 `disable`。
+- `duplicates` 按 Docker 镜像、`uvx`/`npx` 包、本地脚本或 HTTP 端点聚合。同 Agent 重复与跨 Agent 版本漂移作为警告；跨 Agent 名称/服务分发差异作为提示；绝不输出 env 或 header 的值。
 
 Claude 与 Gemini 使用 JSON 合并；Codex 使用带标记的 TOML 区块，手写 MCP 条目会被保留；OpenCode 目前只读，因为重写 JSONC 会丢失注释。疑似密钥的值统一存为 `${ENV_NAME}`，注册表中不会出现真实 Token。
 
