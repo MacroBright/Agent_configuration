@@ -29,17 +29,31 @@ echo "  2) 机器人与具身智能高可靠规范 (Robotics & Embodied AI AGENT
 read -p "选择 [1/2]: " TEMPLATE_CHOICE
 TEMPLATE_CHOICE="${TEMPLATE_CHOICE:-1}"
 
-# 3. 初始化 Git (若尚未初始化)
+# 3. 询问工程完整性模式 (Integrity Mode · 借鉴 Teamwork)
+echo ""
+echo "请选择工程完整性严谨度模式 (输入数字，默认 1):"
+echo "  1) development (快速迭代: 允许复用三方库与框架，拦截伪造与空壳)"
+echo "  2) demo (规范演示: 禁止抄袭开源核心代码，禁止逆向测试用例)"
+echo "  3) benchmark (极严实测: 纯标准库实现，零 mock，硬件/系统真实命令 Ground Truth)"
+read -p "选择 [1/2/3]: " MODE_CHOICE
+case "$MODE_CHOICE" in
+  2) INTEGRITY_MODE="demo" ;;
+  3) INTEGRITY_MODE="benchmark" ;;
+  *) INTEGRITY_MODE="development" ;;
+esac
+
+# 4. 初始化 Git (若尚未初始化)
 if [ ! -d ".git" ]; then
   git init >/dev/null 2>&1 || true
   echo "✓ 已初始化本地 Git 仓库"
 fi
 
-# 4. 创建 .agent 目录并写入黑板
+# 5. 创建 .agent 目录并写入黑板
 mkdir -p .agent
 SESSION_TEMPLATE="$CONFIG_REPO/global/templates/project-SESSION_STATE.md"
 if [ -f "$SESSION_TEMPLATE" ]; then
   sed "s/<简明说明当前正在推进的工程任务、重构或缺陷修复>/$TASK_NAME/g" "$SESSION_TEMPLATE" | \
+  sed "s/development | demo | benchmark (默认: development)/$INTEGRITY_MODE/g" | \
   sed "s/<YYYY-MM-DD>/$(date +%Y-%m-%d)/g" > .agent/SESSION_STATE.md
 else
   cat << SSTATE > .agent/SESSION_STATE.md

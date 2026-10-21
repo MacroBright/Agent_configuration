@@ -170,246 +170,93 @@ USER_CONTEXT.md 是长期稳定坐标，不随当前具体项目/工具变化；
 - 改动 3 个以上文件后运行 `/code-review`。
 - 同一会话尽量只激活 1-2 个领域技能，避免意图混淆；跨领域切换建议 `/clear`。
 
-## 14. 多 Agent 协作与长程记忆接力协议 (Multi-Agent Collaboration & Shared Memory)
+## 14. 多 Agent 协作与长程接力协议 (Multi-Agent Collaboration & Shared Memory)
 
-当多个 Agent（Antigravity、Codex、Claude Code）协作同一个项目时，必须遵循明确的**能力分工矩阵**与 **4 阶段协同接力闭环**：
+当多个 Agent（Antigravity、Claude Code、Codex）协作同一个项目时，必须遵循明确的能力分工、对抗性验证门禁与接力闭环协议：
 
-### 14.1 智能体能力与角色分工矩阵 (Role Matrix)
+### 14.1 协同工位、阶段与专属效能矩阵 (Collab Matrix)
 
-各 Agent 底层模型与交互机制不同，形成「看得广、想得深、改得准」的互补协同：
+各 Agent 底层模型与交互机制不同，形成「看得广、想得深、改得准」的稳定工位拓扑与四阶段接力闭环。协作时优先激活各自的专属效能工具箱（选自 98 个精选 Skills 与核心 MCP，单兵作战不受此限）：
 
-| 智能体 (Agent) | 底层模型 / 核心属性 | 核心定位 | 主责场景与能力专长 |
-| :--- | :--- | :--- | :--- |
-| **Antigravity** | **Gemini 3.8 Flash**<br>- 1M 巨量上下文<br>- 自动上下文压缩 (~135k 触发)<br>- 原生 Linux 沙箱<br>- 多模态图文解析 (DeepSWE 71.0%) | **「看得广」**<br>广域侦察与全景影响分析 | - **全局依赖扫描**：利用 1M 上下文摸清大型代码库拓扑、跨模块调用与潜在破坏半径。<br>- **多格式规范预研**：消化 PDF 论文、硬件手册、CAN DBC、通信协议，生成出版级架构图与状态机 (`diagram-design`)。<br>- **长程连续迁移**：利用沙箱与自动压缩，执行耗时跨模块重构、环境脚手架初始化与批量迁移。<br>- **全局回归复核**：最终破坏性排查、全景构建验证与文档闭环。 |
-| **Claude Code** | **DeepSeek V4.1 Flash**<br>- 1M 上下文窗口<br>- 严密独立 Subagent 体系<br>- 严格权限控制 (`Ask/Deny`) | **「想得深」**<br>深度规划与质量安全裁决 | - **需求拆解与架构规划**：从复杂需求到落地设计，识别领域隐性约束，编写结构化 `implementation_plan.md`。<br>- **独立双轴审查**：派生并行 subagent 执行规范与规格审查 (`two-axis-review`)，严格把关质量与边界。<br>- **复杂系统仲裁**：排查多组件交互死锁、隐蔽竞态与状态机冲突。<br>- **安全与关键操作把关**：对硬件操作、不可逆修改实施最高级别安全审计。 |
-| **Codex** | **DeepSeek V4.1 Flash**<br>- 专为代码微调 (16B 激活)<br>- DSCodex 极速专线 (214.4 tok/s)<br>- 终端紧凑原生集成 | **「改得准」**<br>手术刀式精准执行与高吞吐验证 | - **手术刀级精准实现**：在明确方案指导下，高吞吐编写确定性核心代码，单点修改精准无冗余。<br>- **TDD 与协议编解码**：快速落地驱动与业务测试（Python 遵循 PEP 8 + pytest，C++ 遵循 Google C++ 规范 + GTest，其他语言遵循对应 Google 规范）、CAN DBC 序列化、SocketCAN 编解码与硬件驱动脚手架。<br>- **极速对抗挑刺**：利用 200+ tok/s 吞吐进行对抗性代码审查 (Adversarial Review)，质疑边界与假设。<br>- **突发缺陷极速抢修**：单点 Bug 快速复现、定位与一键修补。 |
+| 工位 / 阶段 | 担当智能体 (底层模型) | 核心定位与职责 | 专属精选 Skills (精而不多) | 专属 MCP 服务 | 核心产出交付物 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Seat 1 (Recon)**<br>• Phase 1: 广域侦察 | **Antigravity**<br>(Gemini 3.8 Flash, 1M 上下文, 自动压缩) | **「看得广」**<br>全局依赖扫描、跨模块影响面拓扑、DBC/协议解析、架构建模 | `diagram-design`<br>`research`<br>`domain-modeling`<br>`documentation-and-adrs`<br>`verification-before-completion` | `memory`<br>`markitdown`<br>`arxiv`<br>`obsidian` | • 系统架构图<br>• 数据流与拓扑分析<br>• 长程实体沉淀 |
+| **Seat 2 (Lead)**<br>• Phase 2: 深度规划 | **Claude Code**<br>(DeepSeek V4.1 Flash, 独立 Subagents, 严控权限) | **「想得深」**<br>需求纵深拆解、Invariants 裁决、死锁与竞态排查、安全把关 | `writing-plans`<br>`constraint-driven-development`<br>`subagent-driven-development`<br>`two-axis-review`<br>`robotics-hardware-safety` | `memory`<br>`sequential-thinking` | • `implementation_plan.md`<br>• 不变量与安全约束<br>• 细分子任务黑板签发 |
+| **Seat 3 (Coder)**<br>• Phase 3: 手术执行 | **Codex**<br>(DeepSeek V4.1 Flash via DSCodex, 200+ tok/s) | **「改得准」**<br>手术刀级高密度代码落地、极速 TDD 单测套件（遵循第 6 节规范） | `test-driven-development`<br>`incremental-implementation`<br>`code-simplification`<br>`systematic-debugging`<br>`doubt-driven-development` | `memory`<br>原生编译器/测试工具链 (pytest, gcc, ctest) | • 最小手术刀级源码改动<br>• 全量覆盖单测用例<br>• 驱动与协议编解码 |
+| **Seat 1 (Review)**<br>• Phase 4: 对抗复核 | **Antigravity**<br>(Gemini 3.8 Flash) | **「看得广」**<br>全工程集成编译、跨模块仿真、文档闭环与端到端终验 | `verification-before-completion`<br>`documentation-and-adrs`<br>`diagram-design` | `memory`<br>`markitdown` | • 全局回归测试证据<br>• ADR 决策归档<br>• 协作闭环总结汇报 |
 
-### 14.2 四阶段协同接力闭环 (4-Phase Collaborative Loop)
+### 14.2 对抗性验证门禁体系 (Adversarial Verification Tier · 借鉴 Teamwork)
 
-项目级复杂任务推荐遵循标准化接力流水线：
+为杜绝“顺从式审查”与代码“假通过”，Phase 4 复核与合并前必须通过三层独立对抗门禁：
+1. **Critic (代码规范审查员)**：评审代码风格（严格对齐第 6 节语言规范）、接口契约、Fowler 异味与模块内聚度；
+2. **Challenger (对抗性压力测试员)**：专职“反向挑刺与破坏”，主动构造极端输入、最差复杂度反例、内存泄漏边界、CAN 丢包与 50ms 超时故障，跑红用例才算及格；
+3. **Auditor (真实性审计员)**：严格审查单测与构建的真实终端命令输出，严禁任何形式的打桩伪造 (Anti-Mock)、空断言或跳过测试 (`skip`)，核验硬件/内核命令的 Ground Truth；
+4. **Success Auditor (终验守门员)**：在全项目交付前执行端到端全链路集成验证，确认全绿后方可呈递用户。
 
-```
-[Phase 1: 广域侦察] ──> [Phase 2: 深度规划] ──> [Phase 3: 手术执行] ──> [Phase 4: 全局复核]
-  (Antigravity)           (Claude Code)             (Codex)              (Antigravity)
-   看得广 · 摸脉络         想得深 · 定方案           改得准 · 极速编码       看得广 · 验全景
-   沉淀知识图谱            写入接力黑板              双轴交叉审查            闭环归档
-```
+### 14.3 排他性文件领空原则 (Exclusive File Ownership · 借鉴 Teamwork)
 
-1. **Phase 1: 广域侦察与影响分析 (Reconnaissance & Impact Analysis · Antigravity 主导)**
-   - 全局扫描代码库架构、依赖拓扑与潜在破坏半径。
-   - 解析多格式规格手册、论文、DBC 协议，使用 `diagram-design` 输出系统架构图。
-   - 将分析出的硬件标定、协议映射、架构实体沉淀到共享长程图谱 (`~/.agent-memory/knowledge-graph.jsonl`)。
+在多 Agent 并发协作或子任务流转时，必须坚守文件领空独占边界：
+1. **文件级原子绑定**：任何 Agent 原子签出子任务时，必须在黑板标明独占文件列表：
+   `- [LOCKED: Codex] [FILES: src/can_bus.cpp, include/can_bus.h] <任务描述>`
+2. **绝对互斥写原则**：同一时刻，一个文件严禁被两个 Agent 同时修改，彻底消除 Git 冲突与脏写；
+3. **独立临时工作区**：辅助脚本、调试日志一律写入各自的临时目录（如 `<appDataDir>/brain/<id>/scratch/`），严禁污染项目根目录。
 
-2. **Phase 2: 深度规划与质量裁决 (Deep Planning & Arbitration · Claude Code 主导)**
-   - 纵深拆解需求，识别领域缝隙与边界条件。
-   - 编写详尽的 `implementation_plan.md`，明确不变条件 (Invariants) 与安全规则。
-   - 更新项目根目录接力黑板 `.agent/SESSION_STATE.md`，明确 Task Breakdown 与交接目标。
+### 14.4 工程完整性三模态 (Integrity Modes · 借鉴 Teamwork)
 
-3. **Phase 3: 手术级执行与交叉审查 (Surgical Execution & Cross-Review · Codex 主导 + Claude Code 监督)**
-   - **执行 (Codex)**：以 200+ tok/s 极速高密度编写符合规范的 TDD 单元测试（Python: PEP 8 + pytest, C++: Google Style + GTest, 其余语言遵循对应 Google 规范）与驱动/算法代码，手术刀式精准落地。
-   - **审查 (Claude Code)**：派生独立 subagent 进行规范与规格双轴审查 (`two-axis-review`)，对抗性审查与静态检查无误后合入分支。
+根据任务严谨度，黑板顶部显式声明完整性模式，Auditor 据此执行分级门禁：
+- `development` (快速迭代)：允许复用第三方库与既有成熟框架，重在流程贯通；拦截伪造输出与空壳实现；
+- `demo` (规范演示)：增加约束——禁止直接抄袭开源核心算法，禁止逆向测试用例伪造期望结果；
+- `benchmark` (极严实测)：最高严谨度，只允许标准库从零实现，绝对禁止测试 mock，必须以真实硬件/系统命令输出作为 Ground Truth。
 
-4. **Phase 4: 全局复核与文档闭环 (Global Verification & Closure · Antigravity 主导)**
-   - 运行全工程编译、仿真/虚拟总线集成测试，验证跨模块破坏性影响。
-   - 同步更新工程文档、ADR 架构决策记录与用户说明。
-   - 更新 `.agent/SESSION_STATE.md` 完成状态归档，将新知识沉淀至长程图谱。
+### 14.5 声明式 Subagent 资产与接班人轮换 (Declarative Subagents & Successor Handoff)
 
-### 14.3 长程记忆与工作区纪律协议
+1. **声明式子 Agent 资产沉淀**：
+   - 在 `agents/` 目录以标准 Markdown + YAML Frontmatter 固化专职 Agent：`explorer.md`（只读探索）、`challenger.md`（压力测试）、`auditor.md`（真实性审计），自动安装至 `~/.gemini/config/agents/`；
+   - Antigravity 支持在 `/agents` 面板选择或通过 `invoke_subagent` 零开销并发调用，支持 `branch` (Git Worktree 隔离) 模式；
+2. **里程碑接班人轮换 (Fresh Successor Handoff · 借鉴 Teamwork)**：
+   - 针对跨多天的大型项目，主控 Agent 在完成一个 Milestone 并将结果固化至黑板后，**主动交接给一个全新的 Successor 实例接手下一里程碑**，彻底消除长上下文智力衰减 (Context Bloat)。
 
-1. **共享长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`)**：
-   - 当分析出新的软硬件架构组件、硬件标定参数、通信协议 DBC 映射或核心排错规则时，调用 `create_entities` / `add_observations` 沉淀到图谱中。
-   - 面对不熟悉的硬件或模块，优先通过 `search_nodes` / `read_graph` 检索其他 Agent 已沉淀的图谱知识。
-2. **项目级接力黑板 (`.agent/SESSION_STATE.md`)**：
-   - 启动任务或接手项目时，优先检查项目根目录是否存在 `.agent/SESSION_STATE.md`（模板见 `global/templates/project-SESSION_STATE.md`）；若存在，主动读取该状态并无缝衔接。
-   - 完成关键开发/审查阶段后，主动将当前进展、技术决策与下一个 Agent 的交接指令更新至 `.agent/SESSION_STATE.md`。
-3. **版本控制与工作区纪律**：
-   - 跨 Agent 交接前必须保证本地工作区提交或暂存，严禁遗留未跟踪脏文件。
-   - 多 Agent 并行开发不同特性时，强制使用 `using-git-worktrees` 创建独立工作树分支隔离。
+### 14.6 长程记忆与认知反思闭环 (Retain-Recall-Reflect · 借鉴 Hindsight)
 
-### 14.4 会话启动自感知与零指令接力协议 (Zero-Prompt Self-Perception Protocol)
+摒弃无意义流水账堆砌，跨 Agent 记忆交互遵循认知三动词：
+1. **Retain (事实留存)**：仅将核心架构实体、标定参数与通信协议 DBC 写入 `~/.agent-memory/knowledge-graph.jsonl`；
+2. **Recall (有预算召回)**：跨 Agent 检索长程图谱时单次注入严格限制在 $\le 800$ tokens 以内，优先召回高阶 Invariants，杜绝上下文污染；
+3. **Reflect (反思升华)**：排查出隐蔽缺陷或死锁后，强制以标准 Schema 升华写入黑板 Section 4 与长程图谱：
+   `{触发场景 (Trigger) → 踩坑诱因 (Gotcha) → 升华法则 (Crystallized Invariant)}`。
 
-为了消除跨 Agent 交接时人工复制粘贴提示词的摩擦，所有 Agent 在会话启动或接收到任意初始触发（如用户输入 "go"、"continue"、"c"、回车、或问好）时，必须严格执行**自感知启动例程**：
+### 14.7 工单原子锁与 5 轮熔断安全带 (Task Locks & Safeguards · 借鉴 Paperclip)
 
-1. **静默探测黑板**：
-   - 优先检查当前工作区根目录是否存在 `.agent/SESSION_STATE.md`。
-2. **状态感知与职责认领**：
-   - 若存在黑板，主动读取「当前进度」与「接力指令 (Handoff to Next Agent)」。
-   - 若接力指令明确指向本 Agent，或当前未完成阶段属于本 Agent 的核心职责（Phase 1/4 -> Antigravity, Phase 2 -> Claude Code, Phase 3 -> Codex）：
-     - **禁止要求用户重复下达任务描述或复制提示词**。
-     - 首轮响应统一输出自感知前缀：
-       `[Auto-Perceived] 检测到接力黑板：当前处于 Phase X (<阶段名称>)，接手执行...`
-     - 自动通过 MCP 检索长程知识图谱 (`~/.agent-memory/knowledge-graph.jsonl`) 中的关联实体。
-     - 严格继承上一个 Agent 在黑板中声明的「核心技术决策与不变量 (Invariants)」，直接推进本阶段工作。
-3. **阶段完成与主动交接**：
-   - 本阶段目标达成并验证后，当前 Agent **必须主动更新 `.agent/SESSION_STATE.md`**：勾选已完成阶段、填写实证记录与 Commit ID、追加新发现的 Invariants，并将接力指令移交给下一个 Agent。
+1. **工单原子签出状态机**：
+   - 子任务严格遵循：`[PENDING]` $\rightarrow$ `[LOCKED: <Agent>] [FILES: ...]` $\rightarrow$ `[REVIEWING: <Agent>]` $\rightarrow$ `[COMPLETED]`；
+2. **5 轮熔断安全带**：
+   - 黑板强制维护 `迭代轮次: N / 5` 计数器；若两 Agent 在单点修改上反复拉锯超过 5 轮，强制触发熔断挂起（`[SUSPENDED: ESCALATED]`），呈递求助卡交由人类董事会 (Board) 裁决。
 
-### 14.5 协作触发门禁与复杂度分级 (Complexity Gating & Resource Thrift)
+### 14.8 自感知接力、手动调度与闭环汇报
 
-**严禁过度协作与资源浪费**。多 Agent 协作仅适用于高杠杆复杂场景，坚决杜绝低复杂度任务上的流程膨胀：
+1. **自感知启动例程 (Zero-Prompt Perception)**：
+   - 会话启动时静默检查 `.agent/SESSION_STATE.md`；若存在且指向本 Agent，首轮直接输出：
+     `[Auto-Perceived] 检测到接力黑板：当前处于 Phase X (<阶段名称>)，接手执行...`
+   - 自动读取黑板中的 Invariants 与图谱实体直接推进，严禁让用户重复粘贴提示词；
+2. **支持灵活手动调度**：
+   - 用户拥有最高调度权，可随时打破 4 阶段顺序指定任意接力（如 Phase 1 调研后直接交由 Codex 极速编码）；接手 Agent 必须无条件服从并顺畅承接；
+3. **闭环结构化汇报**：
+   - 协作任务收敛后，收尾 Agent 必须向用户输出结构化汇报：包含任务目标、完成度实证、各 Agent 贡献与 Commit ID、新沉淀法则及后续建议。
 
-1. **启动多 Agent 协作的场景 (何时协作)**：
-   - 从 0 到 1 构建新工程、新特性或跨模块重大系统重构；
-   - 涉及底层通信协议制定、硬件安全控制（如 CAN 总线、电机驱动、看门狗、昇腾推理管道）；
-   - 排查涉及多组件交互的深层死锁、复杂竞态，或需要独立双轴审查 (`two-axis-review`) 的生产级合入。
-2. **坚决由单 Agent 独立完成的场景 (禁止协作)**：
-   - 日常临时对话、知识问答、单点逻辑咨询；
-   - 单文件/单函数内明确的缺陷修复 (Bugfix)、小范围重构；
-   - 代码格式化、注释与文档微调、简单的单测补充、日常脚本编写；
-   - **执行准则**：遇到上述简单或临时任务，当前 Agent 必须就地解决，**严禁创建接力黑板，严禁推脱或强制要求切换其他 Agent**。
+### 14.9 协作门禁与显式激活控制
 
-### 14.6 预审公示与用户授权门禁 (Pre-Collaboration Proposal & Review Gate)
+1. **门禁控制 (何进何退)**：
+   - 仅对 0 到 1 架构开发、底层协议驱动、复杂并发死锁排查等高杠杆任务启动协作；
+   - 单函数修复、日常问答、简单测试与文档微调，**当前 Agent 必须就地独立完成，坚决禁止协作**；
+2. **决策不擅作主张**：
+   - 遇技术路线分支必须上报人类用户，严格遵循第 10 节规范整理 2~4 个候选方案（推荐项置首并加标 `(推荐)`）；
+3. **显式激活脚手架例程**：
+   - 新文件夹默认单 Agent 纯净模式；仅当用户发出 `/collab-init`、`开启多 Agent 协作` 等显式指令并确认预审卡后，方可创建 `.agent/SESSION_STATE.md` 与项目 `AGENTS.md`。
 
-在启动多 Agent 协作流水线或分发子任务之前，当前 Agent **必须先向用户阐述结构化协作提纲**，保障用户对多 Agent 行为 100% 知情并拥有审批权：
+### 14.10 上下文防御与终端编排 (Context-Mode & OpenRig)
 
-1. **提纲结构规范**：
-   - **协作目的**：简述为何当前任务适合多 Agent 协作（如需要广度预研 + 深度规划 + 高速编码分工）；
-   - **分工矩阵**：明确列出本次参与的 Agent（如 Antigravity / Claude Code / Codex）、各自负责的具体任务范围及调用顺序；
-   - **预期产出与验收指标**：明确各阶段产物（方案文档、源码、单测）及验证命令。
-2. **用户授权门禁**：
-   - 提纲输出后，**必须等待用户审核、调整（如增减 Agent、修改责任边界、增删约束）并明确确认后**，方可正式初始化黑板并开始分发任务。
-
-### 14.7 决策不擅作主张与选项机制 (Decision Escalation & Non-Presumption)
-
-遇到技术路线分支、关键架构选型或业务偏好未明确时，**绝对禁止 Agent 擅自替用户做主**：
-
-1. **决策上报原则**：
-   - 涉及第三方依赖选型、通信协议格式、性能与内存权衡、接口破坏性改动等关键事项，必须将裁决权交给人类用户。
-2. **选项呈现规范**：
-   - 必须整理出 2~4 个清晰明确的候选方案；
-   - 推荐方案排在第一位并显式标记 `(推荐)`，每个选项附带具体实现代价、风险说明与适用场景；
-   - 经用户拍板确定后，Agent 方可将其写入黑板作为后续阶段的不变量 (Invariants) 严格执行。
-
-### 14.8 支持灵活手动协作调度 (Flexible Manual Dispatch & Custom Handoff)
-
-标准 4-Phase 流程仅为推荐流水线，**用户拥有最高调度权，可随时按需进行非标或手动协作调度**：
-
-1. **自由指定调用链路**：
-   - 用户可根据实际需要，随时手动指定任意 Agent 之间的单步或组合接力。例如：
-     - *Antigravity 完成技术调研后，用户直接命令 Codex 依据调研产物制定计划并极速编码*（跳过 Claude Code）；
-     - *Codex 编码过程中遇到瓶颈，用户直接命令 Claude Code 介入进行故障分析与架构裁决*；
-     - *用户直接在终端手写部分代码后，调用任一 Agent 补全单测或复核*。
-2. **接手 Agent 行为准则**：
-   - 任何接手 Agent 必须无条件服从用户的临场调度指令，主动读取上游产物（无论由谁产出），无缝继续推进，严禁死板要求“前置步骤必须由指定 Agent 完成”。
-
-### 14.9 协作任务闭环结构化汇报 (Post-Collaboration Summary & Debrief)
-
-在一轮多 Agent 协作任务彻底完成（或阶段性收敛）后，最后负责收尾/验收的 Agent 必须向用户输出一份**简明、结构化的闭环总结汇报**：
-
-- **本轮任务目标 (Mission Objective)**：简明陈述本次多 Agent 协作解决的核心问题；
-- **完成度与实证 (Completion & Evidence)**：明确完成状态，列出编译结果、测试覆盖率、通过用例数等客观证据；
-- **各 Agent 贡献明细 (Agent Contributions)**：
-  - 各参与 Agent（Antigravity / Claude Code / Codex）各自实际完成的工作、提交的 Git Commit ID 以及产出文件路径；
-- **沉淀资产与不变量 (Assets & Invariants)**：新沉淀至长程知识图谱的实体、写入项目黑板的核心技术约束；
-- **后续建议 / 未决项 (Next Steps & Open Issues)**：需要用户知晓的后续动作、潜在风险或未决细节。
-
-### 14.10 协作模式显式激活指令与脚手架例程 (Explicit Collaboration Activation Protocol)
-
-**默认行为准则：新建文件夹默认保持纯净的单 Agent 模式，绝不自作主张创建任何协作文件。**
-
-只有当用户显式发出指令，明确表达需要多 Agent 协同开发的意图时，方可触发项目级协作配置：
-
-1. **关键词触发指令 (Trigger Keywords)**：
-   - **斜杠指令**：`/collab-init`、`/collab`
-   - **自然语言指令**：`开启多 Agent 协作`、`启用协作模式`、`多 Agent 开发`、`init collab`
-2. **预审确认卡 (Pre-init Confirmation)**：
-   - 捕获到上述指令后，当前 Agent **严禁直接静默写文件**，必须先向用户输出结构化确认卡：
-     - **项目名称与任务核心目标**（根据用户输入提炼）；
-     - **领域规范模板选型**：提供选项供用户选择（如：选项 1 `(推荐)` 通用项目模板；选项 2 机器人与具身智能高可靠模板）；
-     - **拟参与 Agent 矩阵与阶段规划**。
-3. **文件级脚手架落地 (Scaffolding on Confirmation)**：
-   - 用户确认授权（或选定模板）后，Agent 自动执行项目级文件配置：
-     ① 若项目未纳入版本控制，初始化 `git init`；
-     ② 创建 `.agent/` 目录，并基于模板渲染生成 `.agent/SESSION_STATE.md`（填入当前任务目标，Phase 1 待启动）；
-     ③ 将选定的领域模板（如 `global/templates/project-AGENTS.md` 或 `robotics-AGENTS.md`）落地至项目根目录 `AGENTS.md`；
-     ④ 输出激活提示：`[Collab Activated] 本项目已正式建立多 Agent 协作黑板，后续各 Agent 将通过黑板无缝自感知接力。`
-
-### 14.11 协同专属 Skills & MCP 效能配置矩阵 (Specialized Tooling Matrix in Collaboration Mode)
-
-为确保各 Agent 在协作时最大化发挥模型与外壳优势，协作模式下实行**「精选专属配置 + 经验持续沉淀」**机制。所选技能严格源自既有 98 个高阶 Skills 库与核心 MCP 服务，绝不凭空捏造。
-
-#### 1. 智能体专属效能工具箱矩阵 (Curated Tooling Breakdown)
-
-| 智能体 (Agent) | 协同定位与主责阶段 | 专属精选 Skills (精而不多，每角色 5 选) | 专属 MCP 服务 |
-| :--- | :--- | :--- | :--- |
-| **Antigravity** | **「看得广」**<br>• Phase 1: 广域侦察 & 协议沉淀<br>• Phase 4: 全景复核 & 文档闭环 | 1. `diagram-design`：出版级系统架构图、时序图、状态转移图<br>2. `research`：多源规格预研与技术可行性论证研报<br>3. `domain-modeling`：统一领域概念、术语实体与拓扑建模<br>4. `documentation-and-adrs`：架构决策记录 (ADR) 与工程契约归档<br>5. `verification-before-completion`：全景构建复核，无实证绝不称完成 | • `memory` (沉淀/检索全局图谱)<br>• `markitdown` (秒级消化 PDF/DBC/数据手册)<br>• `arxiv` (论文与前沿算法直搜)<br>• `obsidian` (知识库双向索引) |
-| **Claude Code** | **「想得深」**<br>• Phase 2: 深度规划 & 架构裁决<br>• 监督 Phase 3: 严格代码审查 | 1. `writing-plans`：纵深需求拆解与无缝 implementation_plan 制定<br>2. `constraint-driven-development`：领域隐性约束挖掘与 Invariants 裁决<br>3. `subagent-driven-development`：派生独立并行 subagent 执行隔离审查<br>4. `two-axis-review`：规范与规格双轴严格代码审查，把关合入质量<br>5. `robotics-hardware-safety`：硬件操作五步安全阶梯与权限拒绝审计 | • `memory` (读取架构约束与历史踩坑)<br>• `sequential-thinking` (深度链式因果推演，排查死锁与状态冲突) |
-| **Codex** | **「改得准」**<br>• Phase 3: 手术级执行 & 极速 TDD | 1. `test-driven-development` / `tdd`：红绿重构，极速生成紧凑单测套件（Python: pytest；C++: Googletest；其余语言遵循对应 Google 规范）<br>2. `incremental-implementation`：单点手术刀式实现，零冗余代码<br>3. `code-simplification`：剔除过度封装与猜测性抽象，保持高内聚<br>4. `systematic-debugging`：单点缺陷快速复现与根因抢修<br>5. `doubt-driven-development`：利用 200+ tok/s 极速对抗挑刺与边界压测 | • `memory` (秒查通信结构体与硬件参数)<br>• 原生编译器/测试工具链 (pytest, googletest, gcc, cmake, socketcan) |
-
-#### 2. 轮巡前置工具筛选机制 (Phase-Aware Pre-Flight Screening)
-当轮到某个 Agent 执行对应阶段时，该 Agent 必须执行**前置筛选例程**：
-1. **感知身份与阶段**：读取 `.agent/SESSION_STATE.md`，明确本阶段主责目标；
-2. **命中专属工具库**：优先从上方对应角色的 5 个专属技能与专用 MCP 中，匹配当前任务杠杆率最高的 1~2 个工具进行激活，严禁临时发明未经检验的流程；
-3. **精准产出交付物**：在专属工具加速下，高效交付本阶段的产物（图表/方案/单测/代码/复核报告）。
-
-#### 3. 经验总结沉淀与自强化飞轮 (Continuous Learning & Experience Crystallization)
-为了实现“越用越好用，历史坑绝不踩第二遍”，各 Agent 在交接或收尾时必须执行**经验沉淀动作**：
-1. **经验提取**：提取本轮排查出的死锁诱因、硬件通信兼容性边界、特殊编译器参数或数据对齐陷阱；
-2. **双重沉淀**：
-   - **本地黑板**：追加至 `.agent/SESSION_STATE.md` 的「核心技术决策与不变量 (Invariants)」；
-   - **长程图谱**：调用 `memory` 的 `add_observations` 或 `create_entities` 沉淀至 `~/.agent-memory/knowledge-graph.jsonl`；
-3. **后续继承**：后续任何 Agent 接手或在未来新会话中启动时，优先检索此经验图谱，直接继承前人的决策沉淀。
-
-#### 4. 独立开发不受限原则 (Unconstrained Solo Mode Guarantee)
-- **明确边界**：上述专属 Skills 与 MCP 矩阵**仅在多 Agent 协同接力模式（存在 `.agent/SESSION_STATE.md`）下作为主责加速指引**。
-- **单兵作战零限制**：当任一 Agent 处于独立开发模式（普通项目或日常临时对话）时，**完全不受上述专属矩阵限制**，各 Agent 依然拥有全局 98 个 Skills 以及系统中安装的所有 MCP 工具的全部调度权限，随时胜任端到端全流程开发。
-
-### 14.12 认知反思模型与高阶规则升华 (Retain-Recall-Reflect Protocol · 借鉴 Hindsight)
-
-摒弃无意义流水账式的记忆堆砌，跨 Agent 记忆交互遵循认知三动词机制：
-
-1. **Retain (事实留存)**：各 Agent 完成具体工程改动后，仅提取核心架构实体、通信协议定义与标定参数，禁止冗余会话碎片入库；
-2. **Recall (有预算召回)**：跨 Agent 检索长程图谱时严格实施 Token 预算控制（单次检索注入不超过 800 tokens），优先检索高权重的“反思规则（Reflections）”与“安全不变量（Invariants）”，避免无用历史稀释上下文；
-3. **Reflect (反思升华)**：每次遇到隐蔽 Bug、死锁或人为纠偏时，收尾 Agent 必须在 Phase 4（或 Claude 在 Phase 2）将问题升华为标准结构化反思实体：
-   - **触发场景 (Trigger)**：在何种环境或操作序列下暴露；
-   - **踩坑诱因 (Gotcha)**：根因究竟是时序竞态、对齐错误还是未捕获异常；
-   - **永久法则 (Crystallized Invariant)**：提炼出后续全队必须无条件遵从的高阶设计规则。
-   - 升华出的法则同步持久化至 `~/.agent-memory/knowledge-graph.jsonl` 与黑板 Section 4。
-
-### 14.13 工单原子锁与协同熔断安全带 (Task Locking & Iteration Safeguard · 借鉴 Paperclip)
-
-为防止多 Agent 协作时任务归属模糊、甚至陷入互相修改的死循环，引入工单原子锁与迭代熔断：
-
-1. **工单原子签出状态机 (Atomic Task Checkout)**：
-   - 黑板中的每一个分解子任务必须标明当前状态与归属：
-     - `[PENDING]`：待认领；
-     - `[LOCKED: <Agent>]`：已由特定 Agent 原子认领，其他 Agent 严禁跨越修改该范围代码；
-     - `[REVIEWING: <Agent>]`：正在等待审查 Agent 验收；
-     - `[COMPLETED]`：实证通过并合入主分支。
-2. **迭代轮次硬熔断 (Iteration Budget & Runaway Guard)**：
-   - 项目黑板中强制维护 `迭代轮次: N / Max` 计数器（默认上限为 5 轮）；
-   - 若 Codex 与 Claude Code 在某单点特性上反复修改、审查打回超过 5 轮仍未通过测试，**强制触发熔断机制**：
-     - 立即将任务标记为 `[SUSPENDED: ESCALATED]`；
-     - 停止自动流转，向用户“董事会 (Board)”发出求助信号并附上分歧点，等待人类介入裁决。
-
-### 14.14 工位拓扑与终端现场快照机制 (Seat Topology & Workspace Snapshot · 借鉴 OpenRig)
-
-为了规范多终端会话并避免终端蔓延（Terminal Sprawl），建立工位拓扑与现场快照支持：
-
-1. **工位命名与职责边界 (Seat Topology)**：
-   - `Seat 1 (Recon)`：Antigravity，负责宏观扫描、协议解析、全景复核与文档沉淀；
-   - `Seat 2 (Lead)`：Claude Code，负责需求拆解、Invariants 裁决与双轴审查；
-   - `Seat 3 (Coder)`：Codex，负责 200+ tok/s 极速 TDD 单元测试与核心算法手术刀实现。
-2. **终端现场快照支持 (Workspace Snapshots)**：
-   - 支持通过 `collab-tmux` 工具为项目分配独立的后台 `tmux` 会话与专属窗口（`claude`, `codex`）；
-   - 支持跨天或暂停时执行快照保存（保存终端当前上下文与运行状态），下次一键原地恢复。
-
-### 14.15 计算下沉与上下文虚拟化防御 (Think in Code & Context Virtualization · 借鉴 Context-Mode)
-
-为解决复杂项目多轮交互中海量工具原始数据（日志、全量文件读取、构建输出）冲垮上下文窗口，以及宿主会话压缩失忆问题，引入以下四项上下文工程防护：
-
-1. **Think in Code 计算逻辑下沉**：
-   - 核心范式：**将 LLM 视为代码生成器而非数据流吞吐器**（*Program the analysis, not compute it*）；
-   - 约束场景：对 10 个以上文件的结构探索、符号/函数统计、依赖关系扫描、长日志诊断等探索任务，严禁用连续大量原生工具（如数十次 `read_file`、全量 `grep`）将数十万字节未经加工的原始数据硬塞入上下文；
-   - 实践要求：优先编写单次短小精悍的内联脚本（Python `python3 -c "..."` 或 Node.js / Shell）在终端执行，通过本地计算与过滤，**仅将提炼后的一行或数行统计/分析结果送回上下文**（Token 消耗降低 98%+）。
-
-2. **命令输出防爆安全带 (Output Explosion Safeguard)**：
-   - 任何可能输出超过 50 行的命令（如全量测试、CMake/colcon 构建日志、`git log`、日志巡检）：
-   - 强制使用管道过滤或重定向（如 `| grep -E "FAIL|ERROR|Summary"`, `| head -n 30`, `| tail -n 30`, 或 `command > output.log 2>&1 && tail -n 30 output.log`）；
-   - 杜绝裸命令刷屏污染长程注意力。
-
-3. **PreCompact 钩子与接力黑板抗失忆联动**：
-   - 联动 Claude Code 的 `PreCompact` 钩子，通过轻量级工具 `collab-precompact`（软链至 `~/.local/bin/collab-precompact`），在宿主进行不可逆上下文截断前夕触发；
-   - 自动将当前 Git 分支状态、脏文件列表、最近提交与当前未结 Invariants 强制持久化写入 `.agent/SESSION_STATE.md`，彻底消除长会话压缩后的“上下文失忆”。
-
-4. **治理数据流向而非压抑自然表达 (No Prose-Style Enforcement)**：
-   - 上下文优化的核心是阻断工具输出垃圾文本的注入，**严禁在系统提示词中强加极端的字数抑制或反自然表达惩罚**，保持大模型在架构推演、边界裁决与代码编写时的严密思考深度。
+1. **PreCompact 钩子与接力黑板抗失忆**：
+   - 联动 Claude Code 的 `PreCompact` 钩子（工具 `collab-precompact` 软链至 `~/.local/bin/`），在会话压缩前夕自动将 Git 分支、脏文件列表与未结 Invariants 持久化注入黑板快照区块；
+2. **终端工位分屏与快照**：
+   - 支持通过轻量级工具 `collab-tmux` 一键分配后台工位分屏，支持跨天时执行 `collab-tmux snapshot` 现场快照保存与原地恢复；
+3. **全链路上下文防爆**：
+   - 全面遵循第 3 节 Think in Code 原则（编写本地微脚本执行过滤，仅将精炼结果送回上下文）与第 7 节命令输出防爆安全带（长日志必须管道截断）。

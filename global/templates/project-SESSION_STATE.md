@@ -7,6 +7,7 @@
 - **任务主题**: <简明说明当前正在推进的工程任务、重构或缺陷修复>
 - **关联需求 / Issue**: <链接或规范文档路径>
 - **发起时间**: <YYYY-MM-DD>
+- **工程完整性模式 (Integrity Mode)**: development | demo | benchmark (默认: development)
 - **协同迭代轮次**: 1 / 5 (熔断阈值: 5 轮，超限将挂起并升级至人类董事会)
 
 ## 2. 流水线阶段与工单状态机 (Pipeline & Task Locks)
@@ -14,13 +15,14 @@
 - [ ] **Phase 1: 广域侦察与影响分析** (Seat 1: Antigravity 主导 · 看得广 | 专属 Skills: `diagram-design`, `research`, `domain-modeling`, `documentation-and-adrs`, `verification-before-completion`)
 - [ ] **Phase 2: 深度规划与质量裁决** (Seat 2: Claude Code 主导 · 想得深 | 专属 Skills: `writing-plans`, `constraint-driven-development`, `subagent-driven-development`, `two-axis-review`, `robotics-hardware-safety`)
 - [ ] **Phase 3: 手术级执行与交叉审查** (Seat 3: Codex 主导执行 · 改得准 + Claude Code 监督 | 专属 Skills: `test-driven-development`, `incremental-implementation`, `code-simplification`, `systematic-debugging`, `doubt-driven-development`)
-- [ ] **Phase 4: 全局复核与文档闭环** (Seat 1: Antigravity 主导 · 看得广 | 专属 Skills: `verification-before-completion`, `documentation-and-adrs`, `diagram-design`)
+- [ ] **Phase 4: 全局复核与对抗门禁** (Seat 1: Antigravity 主导 · Critic 规范评审 / Challenger 压力反例 / Auditor 真实性审计 | 专属 Skills: `verification-before-completion`, `documentation-and-adrs`, `diagram-design`)
 
 > 注：支持用户打破标准流水线，手动指定任意 Agent 跨阶段自由接力（如 Phase 1 调研后直接由 Codex 手术级执行）。
 
-### 细分工单原子锁 (Atomic Task Checkout)
-- `[LOCKED: Codex]` <子任务 1: 核心协议序列化与数据结构实现> (正在执行中，其他 Agent 禁动)
-- `[PENDING]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
+### 细分工单原子锁与排他文件领空 (Atomic Task Checkout & Exclusive File Ownership)
+> 规则：任务原子认领必须绑定独占文件领空 `[FILES: ...]`，任一文件同一时刻严禁被两个 Agent 同时修改。
+- `[LOCKED: Codex] [FILES: src/can_bus.cpp, include/can_bus.h]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定)
+- `[PENDING] [FILES: src/watchdog.cpp]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
 - `[REVIEWING: Claude Code]` <子任务 3: 双轴规范审查与死锁检测> (待审查)
 - `[COMPLETED]` <子任务 0: 架构图与长程实体沉淀> (已归档)
 

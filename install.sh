@@ -223,6 +223,15 @@ if [ -d "${HOME_DIR}/.gemini" ]; then
 }
 SKJSON
   say "已配置 ~/.gemini/config/skills.json 双重技能检索路径"
+
+  # 配置声明式自定义 Subagents (~/.gemini/config/agents/ · 借鉴 Antigravity 官方规范)
+  mkdir -p "${HOME_DIR}/.gemini/config/agents"
+  if [ -d "$REPO_DIR/agents" ]; then
+    for ag in "$REPO_DIR/agents"/*.md; do
+      [ -f "$ag" ] && ln -sf "$ag" "${HOME_DIR}/.gemini/config/agents/$(basename "$ag")"
+    done
+    say "已配置 ~/.gemini/config/agents/ 声明式 Subagents (explorer, challenger, auditor)"
+  fi
 fi
 
 # ---------- 7. agentctl（统一 skills / MCP 管理层） ----------

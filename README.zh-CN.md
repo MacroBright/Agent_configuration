@@ -301,6 +301,7 @@ agentctl plugin enable|disable <selector> --agent claude [--apply]
 2. **工单原子锁与熔断安全带 (源自 Paperclip)**：子任务状态细化为 `[PENDING] → [LOCKED: Agent] → [REVIEWING] → [COMPLETED]`；单轮协作默认 5 轮迭代上限，超限自动熔断并上报用户。
 3. **工位拓扑与终端快照 (源自 OpenRig)**：确立 `Seat 1 (Recon)`、`Seat 2 (Lead)`、`Seat 3 (Coder)` 工位边界；提供 `collab-tmux` 支持终端协同分屏与现场快照。
 4. **上下文虚拟化与计算下沉 (源自 Context-Mode)**：倡导 “Think in Code” 范式，分析任务编写内联微脚本在沙箱执行，仅回传精炼结果；联动 PreCompact 钩子执行 `collab-precompact` 持久化状态；对全量测试与构建输出强制管道截断。
+5. **对抗性门禁、排他领空与声明式 Agent (源自 Antigravity Teamwork & Subagents)**：Phase 4 复核确立 Critic（代码规范）、Challenger（极端用例与压力测试破壁者）与 Auditor（真实命令实测与反 mock/反 skip 审计员）三重独立对抗门禁；引入排他性文件领空原则（`[FILES: ...]` 互斥写）；在黑板中固化三档工程完整性模式（`development` / `demo` / `benchmark`）；预置声明式 Agent 资产（`agents/explorer.md`, `challenger.md`, `auditor.md`）并支持跨里程碑接班人轮换（Fresh Successor Handoff）。
 
 ---
 

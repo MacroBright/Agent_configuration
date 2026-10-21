@@ -18,6 +18,7 @@ for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/proje
          scripts/collab-init.sh scripts/collab-tmux.sh scripts/collab-precompact.sh \
          bin/agentctl skills/agent-config-manager/SKILL.md \
          tests/test_agentctl.py \
+         agents/explorer.md agents/challenger.md agents/auditor.md \
          install.sh verify.sh README.md README.zh-CN.md .gitignore; do
   if [ -f "$REPO_DIR/$f" ]; then echo "  ✓ $f"; else echo "  ✗ 缺失 $f"; FAIL=1; fi
 done
@@ -51,6 +52,12 @@ if [ -d "$HOME/.gemini" ]; then
     echo "  ✓ Antigravity 规则与 MCP 配置就位"
   else
     echo "  ! Antigravity 配置文件不完整"
+  fi
+  AG_N=$(ls -1 "$HOME/.gemini/config/agents"/*.md 2>/dev/null | wc -l)
+  if [ "$AG_N" -ge 3 ]; then
+    echo "  ✓ ~/.gemini/config/agents/ 声明式 Subagents 就位 ($AG_N 个)"
+  else
+    echo "  ! ~/.gemini/config/agents/ 缺少声明式 Subagents"
   fi
 fi
 
