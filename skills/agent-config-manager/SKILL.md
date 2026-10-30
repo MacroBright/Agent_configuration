@@ -32,6 +32,7 @@ it to each agent as hardlinks, so no skill is duplicated on disk.
 ```bash
 agentctl status          # canonical size, per-agent link/copy counts
 agentctl doctor          # broken links, conflicts, duplicate copies
+agentctl audit [path]    # project multi-agent readiness audit (0-100 score, deadlock detection)
 agentctl list            # what exists and which agents have it
 ```
 

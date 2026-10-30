@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -533,6 +534,81 @@ print(json.dumps({{"ok": True}}))
             "--apply", "--allow-cross-agent", "--json",
         )
         self.assertIn("plugin install foo@other", self.mock_log.read_text(encoding="utf-8"))
+
+    def test_audit_empty_directory(self) -> None:
+        empty_dir = self.root / "empty-project"
+        empty_dir.mkdir()
+        proc = self.run_cli("audit", str(empty_dir), check=False)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("PROJECT READINESS AUDIT REPORT", proc.stdout)
+        self.assertIn("NOT_READY", proc.stdout)
+
+        json_proc = self.run_cli("audit", str(empty_dir), "--json", check=False)
+        data = json.loads(json_proc.stdout)
+        self.assertEqual(data["status"], "NOT_READY")
+        self.assertLess(data["score"], 50)
+        self.assertEqual(data["checks"]["agents_spec"]["status"], "FAIL")
+        self.assertEqual(data["checks"]["session_state"]["status"], "FAIL")
+
+    def test_audit_complete_project(self) -> None:
+        proj = self.root / "ready-project"
+        proj.mkdir()
+        subprocess.run(["git", "init", "-b", "main", str(proj)], check=True, capture_output=True)
+        (proj / "AGENTS.md").write_text(
+            "# Project AGENTS.md\n\nRun tests: pytest | head -n 30\n\n## 7. 防爆安全带\n命令必须截断。\n",
+            encoding="utf-8",
+        )
+        (proj / ".agent").mkdir()
+        (proj / ".agent" / "SESSION_STATE.md").write_text(
+            "# Session State\n\n- **Topology**: hierarchical\n- **Integrity Mode**: development\n",
+            encoding="utf-8",
+        )
+        (self.home / ".agent-memory").mkdir(parents=True, exist_ok=True)
+        (self.home / ".agent-memory" / "knowledge-graph.jsonl").write_text("{}\n", encoding="utf-8")
+
+        subprocess.run(["git", "-C", str(proj), "add", "."], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(proj), "commit", "-m", "init"],
+            env=self.env, check=True, capture_output=True
+        )
+
+        proc = self.run_cli("audit", str(proj))
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("READY", proc.stdout)
+
+        data = json.loads(self.run_cli("audit", str(proj), "--json").stdout)
+        self.assertEqual(data["status"], "READY")
+        self.assertEqual(data["score"], 100)
+        for check in data["checks"].values():
+            self.assertEqual(check["status"], "PASS")
+
+    def test_audit_stale_lock_detection(self) -> None:
+        proj = self.root / "stale-lock-project"
+        proj.mkdir()
+        (proj / "AGENTS.md").write_text("pytest\n防爆安全带\n", encoding="utf-8")
+        (proj / ".agent").mkdir()
+        session_file = proj / ".agent" / "SESSION_STATE.md"
+        session_file.write_text(
+            "# Session State\n\nTopology: mesh\nIntegrity: demo\n\n"
+            "- [LOCKED: Codex @ 09:00 (TTL: 1m)] [FILES: src/main.py] Work in progress\n",
+            encoding="utf-8",
+        )
+        old_time = time.time() - 600
+        os.utime(session_file, (old_time, old_time))
+
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        self.assertEqual(data["checks"]["task_locks"]["status"], "FAIL")
+        self.assertEqual(len(data["checks"]["task_locks"]["stale_locks"]), 1)
+        self.assertEqual(data["checks"]["task_locks"]["stale_locks"][0]["agent"], "Codex")
+
+    def test_audit_json_schema(self) -> None:
+        proj = self.root / "schema-project"
+        proj.mkdir()
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        expected_keys = {"path", "score", "max_score", "status", "checks", "recommendations"}
+        self.assertTrue(expected_keys.issubset(data.keys()))
+        check_names = {"agents_spec", "session_state", "task_locks", "output_safeguards", "git_hygiene", "memory_graph"}
+        self.assertEqual(set(data["checks"].keys()), check_names)
 
 
 if __name__ == "__main__":

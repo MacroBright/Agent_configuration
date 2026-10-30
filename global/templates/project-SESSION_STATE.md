@@ -7,6 +7,7 @@
 - **任务主题**: <简明说明当前正在推进的工程任务、重构或缺陷修复>
 - **关联需求 / Issue**: <链接或规范文档路径>
 - **发起时间**: <YYYY-MM-DD>
+- **协作拓扑模式 (Topology)**: hierarchical (分层流水线, 默认) | mesh (结对双工攻坚)
 - **工程完整性模式 (Integrity Mode)**: development | demo | benchmark (默认: development)
 - **协同迭代轮次**: 1 / 5 (熔断阈值: 5 轮，超限将挂起并升级至人类董事会)
 
@@ -21,7 +22,8 @@
 
 ### 细分工单原子锁与排他文件领空 (Atomic Task Checkout & Exclusive File Ownership)
 > 规则：任务原子认领必须绑定独占文件领空 `[FILES: ...]`，任一文件同一时刻严禁被两个 Agent 同时修改。
-- `[LOCKED: Codex] [FILES: src/can_bus.cpp, include/can_bus.h]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定)
+> 租约说明：支持指定认领时间戳与租约 TTL（如 `@ HH:MM (TTL: 30m)`），超期未更新视为死锁陈旧锁，接班 Agent 或人类可强制接管释放。
+- `[LOCKED: Codex @ 15:30 (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定，超时看门狗生效)
 - `[PENDING] [FILES: src/watchdog.cpp]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
 - `[REVIEWING: Claude Code]` <子任务 3: 双轴规范审查与死锁检测> (待审查)
 - `[COMPLETED]` <子任务 0: 架构图与长程实体沉淀> (已归档)
@@ -33,17 +35,21 @@
 | :--- | :--- | :--- | :--- | :--- |
 | <YYYY-MM-DD> | <Agent 名称> | <具体完成项> | <如 pytest 12/12 通过，0 内存泄漏> | `<commit-id>` |
 
-## 4. 技术决策与认知反思沉淀 (Decisions & Reflections)
-### 4.1 核心技术决策与不变量 (Invariants)
+## 4. 记忆命名空间与认知反思沉淀 (Memory Namespaces & Reflections)
+### 4.1 永久不变量 (Invariants Namespace · 永久固化)
 - <决策 1: 控制循环内部绝对禁止动态内存分配 (0 malloc/new)>
 - <决策 2: 通信超时阈值锁定为 50ms 看门狗自动禁能>
 - <决策 3: 角度数据全链路强制 SI 弧度制>
 <!-- 任何接手的 Agent 必须严格遵守上述决策，不得擅自逆向修改 -->
 
-### 4.2 结构化认知反思 (Reflections · 经验升华)
+### 4.2 结构化认知反思 (Patterns Namespace · 经验升华)
 | 触发场景 (Trigger) | 踩坑诱因 (Gotcha) | 升华法则 (Crystallized Invariant) |
 | :--- | :--- | :--- |
 | <如: CAN 总线高频接收> | <堆动态分配导致 200μs 线程抖动> | <在实时控制循环中严格预分配缓冲区，0 动态内存分配> |
+
+### 4.3 暂态交接与握手信号 (Ephemeral Namespace · TTL 300s，归档自动清理)
+- <例如: Codex 提交构建缓存至 /tmp/build_cache，请 Claude Code 审查单元测试覆盖率>
+<!-- 暂态空间用于跨 Agent 握手信号、临时迁移状态，本轮任务交付后丢弃，不污染长程图谱 -->
 
 ## 5. 接力指令 (Handoff to Next Agent)
 - **接手 Agent 启动动作**: <明确写出下一个接班 Agent 启动后要执行的第一条命令或任务>

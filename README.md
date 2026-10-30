@@ -156,6 +156,7 @@ The verification script checks:
 ```bash
 agentctl status                  # canonical count, links, duplicates
 agentctl doctor                  # broken links, conflicts, duplicate copies
+agentctl audit [path]            # project multi-agent readiness audit (0-100 score, deadlock detection)
 agentctl list                    # skills and the agents that can see them
 
 agentctl install <path-or-git-url> [--name NAME] [--subpath skills] [--agent all]
@@ -306,6 +307,11 @@ The collaboration model incorporates proven patterns from open-source agent syst
 3. **Seat Topology & Workspace Snapshots (inspired by OpenRig)**: Assigns deterministic roles (`Seat 1 Recon`, `Seat 2 Lead`, `Seat 3 Coder`) and provides `collab-tmux` for terminal orchestration and snapshot persistence.
 4. **Context Virtualization & Computation Pushdown (inspired by Context-Mode)**: Promotes the "Think in Code" paradigm, executing inline micro-scripts for read-only analysis and returning only synthesized results; integrates the PreCompact hook with `collab-precompact`; enforces output safeguards via pipe truncation on test suites and build logs.
 5. **Adversarial Verification Tier, Exclusive File Ownership & Declarative Subagents (inspired by Antigravity Teamwork & Subagents)**: Establishes a 3-tier adversarial review in Phase 4 comprising Critic (code standards/interface contracts), Challenger (adversarial stress testing/worst-case complexity/CAN packet drop edge cases), and Auditor (ground-truth command output verification/anti-mock/anti-skip audit); enforces Exclusive File Ownership (`[FILES: ...]`); records 3 Integrity Modes (`development` / `demo` / `benchmark`); ships declarative subagent configurations (`agents/explorer.md`, `challenger.md`, `auditor.md`); and supports Fresh Successor Handoffs across milestones to eliminate context degradation.
+6. **Memory Namespaces, Lease Locks, Mesh Topology & Readiness Audit (inspired by Ruflo / claude-flow)**:
+   - **Memory Namespaces**: Segregates shared memory into `invariants` (permanent constraints), `patterns` (crystallized experiences), `collaboration` (ephemeral whiteboard notes), and `ephemeral` (short-lived handoff signals with TTL, automatically purged upon milestone completion to prevent long-term graph pollution);
+   - **Atomic Task Lock Leases & Deadlock Release**: Upgrades checkout syntax with timestamps and lease TTLs (`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: ...]`), flagging expired leases as stale locks and enabling safe handoff takeovers;
+   - **Topology Dual-Mode**: Supports both standard 4-Phase Hierarchical pipelines and lightweight Pair/Mesh mode (Claude Code as Navigator and Codex as Driver for high-intensity algorithm and driver sprints);
+   - **Project Readiness Audit (`agentctl audit`)**: Scans project rules, blackboard status, deadlock risks, and command output safeguards to output a 0–100 readiness score.
 
 ---
 

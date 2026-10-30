@@ -156,6 +156,7 @@ cd ~/agent-config
 ```bash
 agentctl status                  # 规范副本数、链接数、重复项
 agentctl doctor                  # 断链、内容冲突、重复副本
+agentctl audit [path]            # 项目多 Agent 就绪度审计 (0~100 评分、死锁排查与安全带自检)
 agentctl list                    # 技能及各 Agent 可见状态
 
 agentctl install <path-or-git-url> [--name NAME] [--subpath skills] [--agent all]
@@ -302,6 +303,11 @@ agentctl plugin enable|disable <selector> --agent claude [--apply]
 3. **工位拓扑与终端快照 (源自 OpenRig)**：确立 `Seat 1 (Recon)`、`Seat 2 (Lead)`、`Seat 3 (Coder)` 工位边界；提供 `collab-tmux` 支持终端协同分屏与现场快照。
 4. **上下文虚拟化与计算下沉 (源自 Context-Mode)**：倡导 “Think in Code” 范式，分析任务编写内联微脚本在沙箱执行，仅回传精炼结果；联动 PreCompact 钩子执行 `collab-precompact` 持久化状态；对全量测试与构建输出强制管道截断。
 5. **对抗性门禁、排他领空与声明式 Agent (源自 Antigravity Teamwork & Subagents)**：Phase 4 复核确立 Critic（代码规范）、Challenger（极端用例与压力测试破壁者）与 Auditor（真实命令实测与反 mock/反 skip 审计员）三重独立对抗门禁；引入排他性文件领空原则（`[FILES: ...]` 互斥写）；在黑板中固化三档工程完整性模式（`development` / `demo` / `benchmark`）；预置声明式 Agent 资产（`agents/explorer.md`, `challenger.md`, `auditor.md`）并支持跨里程碑接班人轮换（Fresh Successor Handoff）。
+6. **记忆分治、租约认领与准备度审计 (源自 Ruflo / claude-flow)**：
+   - **记忆命名空间分治**：将共享记忆划分为 `invariants` (永久约束)、`patterns` (经验升华)、`collaboration` (协作备忘) 与 `ephemeral` (暂态握手，赋予 TTL，单轮任务交付后自动丢弃，绝不污染长期图谱)；
+   - **工单原子锁租约与看门狗**：认领语法升级为带有时间戳与租约的 `- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: ...]`，超时未更新视为陈旧锁，支持强制释放，规避死锁；
+   - **拓扑双模态**：支持分层流水线 (Hierarchical，默认) 与轻量双工结对互审 (Pair/Mesh，Claude Code 领航 + Codex 极速 TDD)；
+   - **项目级准备度审计 (`agentctl audit`)**：一键自检项目规范、黑板状态机、陈旧任务锁与输出安全带，生成 0~100 准备度评分。
 
 ---
 

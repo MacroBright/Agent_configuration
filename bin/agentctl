@@ -2256,6 +2256,286 @@ def cmd_lock(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- audit
+def check_agents_spec(path: str) -> tuple[int, str, str, str]:
+    candidates = [
+        os.path.join(path, "AGENTS.md"),
+        os.path.join(path, "CLAUDE.md"),
+        os.path.join(path, "global", "AGENTS.md"),
+    ]
+    found = None
+    for c in candidates:
+        if os.path.isfile(c):
+            found = c
+            break
+    if not found:
+        return 0, "FAIL", "Missing AGENTS.md / CLAUDE.md specification file", ""
+    try:
+        with open(found, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return 15, "WARN", f"Found specification at {os.path.basename(found)} but unreadable: {e}", found
+
+    keywords = ["test", "build", "pytest", "make", "cargo", "cmake", "ctest", "unittest", "规范", "测试", "构建", "python", "gcc"]
+    has_guidance = any(k in content.lower() for k in keywords)
+    if has_guidance:
+        return 25, "PASS", f"Found specification at {os.path.basename(found)} with build/testing guidelines", found
+    return 20, "WARN", f"Found {os.path.basename(found)} but lacks clear build/testing guidelines", found
+
+
+def check_session_blackboard(path: str) -> tuple[int, str, str, str]:
+    session_file = os.path.join(path, ".agent", "SESSION_STATE.md")
+    if not os.path.isfile(session_file):
+        return 0, "FAIL", "Missing multi-agent blackboard (.agent/SESSION_STATE.md)", ""
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return 15, "WARN", f"Found .agent/SESSION_STATE.md but unreadable: {e}", session_file
+
+    has_topology = "topology" in content.lower() or "拓扑" in content
+    has_integrity = "integrity" in content.lower() or "完整性" in content
+    if has_topology and has_integrity:
+        return 25, "PASS", "Found .agent/SESSION_STATE.md with Topology and Integrity Mode defined", session_file
+    elif has_topology or has_integrity:
+        return 20, "PASS", "Found .agent/SESSION_STATE.md with partial Mode definitions", session_file
+    return 15, "WARN", "Found .agent/SESSION_STATE.md but missing Topology or Integrity Mode declaration", session_file
+
+
+def check_task_locks(session_file: str) -> tuple[int, str, str, list[dict]]:
+    if not session_file or not os.path.isfile(session_file):
+        return 0, "FAIL", "Blackboard not present; cannot verify lock states", []
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return 0, "FAIL", f"Failed to read session blackboard: {e}", []
+
+    mtime = os.path.getmtime(session_file)
+    now_ts = time.time()
+    file_age_sec = now_ts - mtime
+
+    lock_pattern = re.compile(
+        r'\[LOCKED:\s*([A-Za-z0-9_-]+)(?:\s*@\s*(\d{1,2}):(\d{2}))?(?:\s*\(TTL:\s*(\d+)([mh])\))?\]',
+        re.I
+    )
+
+    all_locks = []
+    stale_locks = []
+
+    for line in content.splitlines():
+        match = lock_pattern.search(line)
+        if match:
+            agent = match.group(1)
+            hh = match.group(2)
+            mm = match.group(3)
+            ttl_val = match.group(4)
+            ttl_unit = match.group(5)
+
+            if ttl_val and ttl_unit:
+                unit_mult = 60 if ttl_unit.lower() == "m" else 3600
+                ttl_sec = int(ttl_val) * unit_mult
+            else:
+                ttl_sec = 7200  # default 2h
+
+            is_stale = False
+            stale_reason = ""
+
+            # Condition 1: file age exceeds lease TTL
+            if file_age_sec > ttl_sec:
+                is_stale = True
+                stale_reason = f"lease expired (file unmodified for {int(file_age_sec // 60)}m > TTL {int(ttl_sec // 60)}m)"
+
+            # Condition 2: timestamp HH:MM provided and was earlier today exceeding TTL
+            if not is_stale and hh is not None and mm is not None:
+                now_dt = datetime.now()
+                lock_dt = now_dt.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+                diff_sec = (now_dt - lock_dt).total_seconds()
+                if 0 <= diff_sec > ttl_sec:
+                    is_stale = True
+                    stale_reason = f"lock timestamp @ {hh}:{mm} expired ({int(diff_sec // 60)}m ago > TTL {int(ttl_sec // 60)}m)"
+
+            lock_info = {
+                "agent": agent,
+                "raw": match.group(0),
+                "ttl_sec": ttl_sec,
+                "stale": is_stale,
+                "reason": stale_reason
+            }
+            all_locks.append(lock_info)
+            if is_stale:
+                stale_locks.append(lock_info)
+
+    if not all_locks:
+        return 15, "PASS", "No active task locks (blackboard clean)", []
+    if not stale_locks:
+        return 15, "PASS", f"{len(all_locks)} active lock(s) with valid lease; no deadlock detected", []
+
+    deduction = len(stale_locks) * 10
+    score = max(0, 15 - deduction)
+    stale_agents = ", ".join(s["agent"] for s in stale_locks)
+    return score, "FAIL", f"Detected {len(stale_locks)} stale lock(s): {stale_agents}", stale_locks
+
+
+def check_output_safeguards(agents_md_path: str) -> tuple[int, str, str]:
+    keywords = [
+        "防爆", "safeguard", "output explosion",
+        "| grep", "| head", "| tail", "pipefail", "管道截断"
+    ]
+    if agents_md_path and os.path.isfile(agents_md_path):
+        try:
+            with open(agents_md_path, "r", encoding="utf-8") as f:
+                content = f.read().lower()
+                for kw in keywords:
+                    if kw in content:
+                        return 15, "PASS", "Output explosion safeguards configured (pipe truncation / grep filters)"
+        except Exception:
+            pass
+    return 0, "WARN", "No output explosion safeguards (| grep, | head, pipefail) found in project rules"
+
+
+def check_git_hygiene(path: str) -> tuple[int, str, str]:
+    git_dir = os.path.join(path, ".git")
+    if not os.path.exists(git_dir):
+        res = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True
+        )
+        if res.returncode != 0 or res.stdout.strip() != "true":
+            return 0, "WARN", "Target directory is not a git repository"
+    try:
+        proc = subprocess.run(
+            ["git", "-C", path, "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5
+        )
+        if proc.returncode != 0:
+            return 0, "WARN", "Could not determine git status"
+        dirty_lines = [l for l in proc.stdout.strip().splitlines() if l.strip()]
+        count = len(dirty_lines)
+        if count == 0:
+            return 10, "PASS", "Git workspace clean (0 uncommitted changes)"
+        elif count <= 10:
+            return 7, "PASS", f"Git workspace healthy ({count} uncommitted changes)"
+        return 3, "WARN", f"Git workspace cluttered ({count} dirty/untracked files)"
+    except Exception as e:
+        return 0, "WARN", f"Git status check failed: {e}"
+
+
+def check_memory_graph(path: str) -> tuple[int, str, str]:
+    candidates = [
+        os.path.join(path, ".agent", "knowledge-graph.jsonl"),
+        os.path.join(path, ".agent-memory", "knowledge-graph.jsonl"),
+        os.path.join(HOME, ".agent-memory", "knowledge-graph.jsonl"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return 10, "PASS", f"Shared knowledge graph found ({os.path.basename(c)})"
+    return 0, "WARN", "Shared knowledge graph (~/.agent-memory/knowledge-graph.jsonl) not found"
+
+
+def cmd_audit(args) -> int:
+    target_path = os.path.abspath(expand(args.path)) if getattr(args, "path", None) else os.getcwd()
+    if not os.path.isdir(target_path):
+        die(f"target path does not exist or is not a directory: {target_path}")
+
+    # 1. AGENTS.md specification
+    spec_score, spec_status, spec_details, spec_path = check_agents_spec(target_path)
+
+    # 2. Session Blackboard State
+    bb_score, bb_status, bb_details, bb_path = check_session_blackboard(target_path)
+
+    # 3. Task Locks & Deadlock
+    locks_score, locks_status, locks_details, stale_locks = check_task_locks(bb_path)
+
+    # 4. Output Safeguards
+    safe_score, safe_status, safe_details = check_output_safeguards(spec_path)
+
+    # 5. Git workspace hygiene
+    git_score, git_status, git_details = check_git_hygiene(target_path)
+
+    # 6. Shared memory graph
+    mem_score, mem_status, mem_details = check_memory_graph(target_path)
+
+    total_score = spec_score + bb_score + locks_score + safe_score + git_score + mem_score
+    max_score = 100
+
+    if total_score >= 90:
+        status_label = "READY"
+    elif total_score >= 70:
+        status_label = "ACCEPTABLE"
+    elif total_score >= 40:
+        status_label = "NEEDS_ATTENTION"
+    else:
+        status_label = "NOT_READY"
+
+    recommendations = []
+    if spec_score < 25:
+        recommendations.append("Run 'collab-init' or create AGENTS.md with project-specific build and test instructions.")
+    if bb_score < 25:
+        recommendations.append("Initialize multi-agent blackboard (.agent/SESSION_STATE.md) with Topology and Integrity Mode.")
+    if locks_score < 15:
+        recommendations.append("Release stale task locks with [RELEASED] or renew lease '@ HH:MM (TTL: <duration>)'.")
+    if safe_score < 15:
+        recommendations.append("Document output explosion safeguards (e.g. '| grep', '| head -n 30') in AGENTS.md.")
+    if git_score < 10:
+        recommendations.append("Clean or commit working tree changes to avoid cross-agent merge conflicts.")
+    if mem_score < 10:
+        recommendations.append("Create ~/.agent-memory/knowledge-graph.jsonl for cross-agent memory retention.")
+
+    checks_dict = {
+        "agents_spec": {"score": spec_score, "max": 25, "status": spec_status, "details": spec_details},
+        "session_state": {"score": bb_score, "max": 25, "status": bb_status, "details": bb_details},
+        "task_locks": {"score": locks_score, "max": 15, "status": locks_status, "details": locks_details, "stale_locks": stale_locks},
+        "output_safeguards": {"score": safe_score, "max": 15, "status": safe_status, "details": safe_details},
+        "git_hygiene": {"score": git_score, "max": 10, "status": git_status, "details": git_details},
+        "memory_graph": {"score": mem_score, "max": 10, "status": mem_status, "details": mem_details},
+    }
+
+    if getattr(args, "json", False):
+        out = {
+            "path": target_path,
+            "score": total_score,
+            "max_score": max_score,
+            "status": status_label,
+            "checks": checks_dict,
+            "recommendations": recommendations,
+        }
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0 if total_score >= 70 else 1
+
+    print("=" * 70)
+    print("                    PROJECT READINESS AUDIT REPORT")
+    print("=" * 70)
+    print(f"Target Path : {target_path}")
+    print(f"Score       : {total_score} / {max_score}")
+    print(f"Status      : {status_label}")
+    print("-" * 70)
+
+    items = [
+        ("AGENTS.md Specification", spec_score, 25, spec_status, spec_details),
+        ("Session Blackboard State", bb_score, 25, bb_status, bb_details),
+        ("Task Locks & Deadlock Guard", locks_score, 15, locks_status, locks_details),
+        ("Output Explosion Safeguards", safe_score, 15, safe_status, safe_details),
+        ("Git Workspace Hygiene", git_score, 10, git_status, git_details),
+        ("Shared Memory & Graph Store", mem_score, 10, mem_status, mem_details),
+    ]
+    for title, sc, mx, st, det in items:
+        badge = f"[{st}]"
+        print(f"{badge:<8} ({sc:>2}/{mx:>2}) {title}")
+        print(f"         {det}")
+
+    print("-" * 70)
+    print("Recommendations:")
+    if recommendations:
+        for r in recommendations:
+            print(f"  • {r}")
+    else:
+        print("  (None. Ready for autonomous multi-agent execution.)")
+    print("=" * 70)
+
+    return 0 if total_score >= 70 else 1
+
+
 # ---------------------------------------------------------------- main
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agentctl", description=__doc__,
@@ -2308,6 +2588,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("doctor", help="detect broken links, conflicts, duplication")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_doctor)
+
+    sp = sub.add_parser("audit", help="inspect project readiness for multi-agent orchestration")
+    sp.add_argument("path", nargs="?", default=".", help="project path (default: .)")
+    sp.add_argument("--json", action="store_true", help="output JSON")
+    sp.set_defaults(func=cmd_audit)
 
     sp = sub.add_parser("lock", help="export portable lockfile into the repo")
     sp.add_argument("--output")

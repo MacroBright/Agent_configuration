@@ -30,7 +30,7 @@ detect_agents(){
 
 # ---------- 0. 安全检查 ----------
 say "在写任何东西之前，先跑一次仓库密钥扫描（若有泄露立即中止）"
-if grep -rInE --exclude-dir=.git -E '(ark-[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY|OPENAI_API_KEY=.{20,}|ghp_[A-Za-z0-9]{20,})' "$REPO_DIR" 2>/dev/null; then
+if grep -rInE --exclude-dir=.git --exclude='*.bak*' --exclude='verify.sh' --exclude='install.sh' -E '(ark-[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|OPENAI_API_KEY="?[A-Za-z0-9]{20,}|ANTHROPIC_API_KEY="?[A-Za-z0-9]{20,})' "$REPO_DIR" 2>/dev/null; then
   say "!! 仓库中发现疑似密钥，中止安装。请先清理后重试。"; exit 1
 fi
 

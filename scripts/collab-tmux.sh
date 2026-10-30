@@ -11,7 +11,9 @@ check_tmux() {
 
 PROJ_DIR="$(pwd)"
 PROJ_NAME="$(basename "$PROJ_DIR")"
-SESSION_NAME="collab-${PROJ_NAME}"
+# 过滤点号和冒号，防止 tmux 目标语法 (session:window.pane) 解析冲突
+CLEAN_NAME="$(echo "$PROJ_NAME" | tr '.:' '__')"
+SESSION_NAME="collab-${CLEAN_NAME}"
 CMD="${1:-up}"
 
 case "$CMD" in
