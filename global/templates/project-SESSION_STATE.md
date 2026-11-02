@@ -23,8 +23,9 @@
 ### 细分工单原子锁与排他文件领空 (Atomic Task Checkout & Exclusive File Ownership)
 > 规则：任务原子认领必须绑定独占文件领空 `[FILES: ...]`，任一文件同一时刻严禁被两个 Agent 同时修改。
 > 租约说明：支持指定认领时间戳与租约 TTL（如 `@ HH:MM (TTL: 30m)`），超期未更新视为死锁陈旧锁，接班 Agent 或人类可强制接管释放。
-- `[LOCKED: Codex @ 15:30 (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定，超时看门狗生效)
-- `[PENDING] [FILES: src/watchdog.cpp]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
+> 订阅直通 (Fast Path)：支持绑定 `[SUBSCRIBED: <thread-id>]` 作用域。后续同一任务的构建报错、编译器日志与测试反馈直接直通认领 Worker，绕过全局重新扫描，节约 30%+ 协调 Token。
+- `[LOCKED: Codex @ 15:30 (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [SUBSCRIBED: thread-can-protocol]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定，直通订阅生效)
+- `[PENDING] [FILES: src/watchdog.cpp] [SUBSCRIBED: thread-watchdog]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
 - `[REVIEWING: Claude Code]` <子任务 3: 双轴规范审查与死锁检测> (待审查)
 - `[COMPLETED]` <子任务 0: 架构图与长程实体沉淀> (已归档)
 
@@ -36,16 +37,18 @@
 | <YYYY-MM-DD> | <Agent 名称> | <具体完成项> | <如 pytest 12/12 通过，0 内存泄漏> | `<commit-id>` |
 
 ## 4. 记忆命名空间与认知反思沉淀 (Memory Namespaces & Reflections)
+> 缓存治理原则：Inline 高频时空邻近信息（节点短 ID、关键摘要、前后关联）；超长 Diff 与日志 Spill 溢出至外部文件；检索时顺着 ID 引用指针执行链式召回 (Chain of Recall)。
+
 ### 4.1 永久不变量 (Invariants Namespace · 永久固化)
-- <决策 1: 控制循环内部绝对禁止动态内存分配 (0 malloc/new)>
-- <决策 2: 通信超时阈值锁定为 50ms 看门狗自动禁能>
-- <决策 3: 角度数据全链路强制 SI 弧度制>
+- `inv-mem-01`: 控制循环内部绝对禁止动态内存分配 (0 malloc/new)
+- `inv-net-02`: 通信超时阈值锁定为 50ms 看门狗自动禁能
+- `inv-kin-03`: 角度数据全链路强制 SI 弧度制
 <!-- 任何接手的 Agent 必须严格遵守上述决策，不得擅自逆向修改 -->
 
 ### 4.2 结构化认知反思 (Patterns Namespace · 经验升华)
-| 触发场景 (Trigger) | 踩坑诱因 (Gotcha) | 升华法则 (Crystallized Invariant) |
-| :--- | :--- | :--- |
-| <如: CAN 总线高频接收> | <堆动态分配导致 200μs 线程抖动> | <在实时控制循环中严格预分配缓冲区，0 动态内存分配> |
+| 节点 ID | 触发场景 (Trigger) | 踩坑诱因 (Gotcha) | 升华法则 (Crystallized Invariant) | 关联节点 (Chain Ref) |
+| :--- | :--- | :--- | :--- | :--- |
+| `pat-can-01` | CAN 总线高频接收 | 堆动态分配导致 200μs 线程抖动 | 在实时控制循环中严格预分配缓冲区，0 动态内存分配 | `inv-mem-01`, `thread-can-protocol` |
 
 ### 4.3 暂态交接与握手信号 (Ephemeral Namespace · TTL 300s，归档自动清理)
 - <例如: Codex 提交构建缓存至 /tmp/build_cache，请 Claude Code 审查单元测试覆盖率>

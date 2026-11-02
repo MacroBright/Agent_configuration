@@ -156,7 +156,7 @@ The verification script checks:
 ```bash
 agentctl status                  # canonical count, links, duplicates
 agentctl doctor                  # broken links, conflicts, duplicate copies
-agentctl audit [path]            # project multi-agent readiness audit (0-100 score, deadlock detection)
+agentctl audit [path] [--watch]  # project multi-agent readiness audit and watchdog guard (0-100 score, thrashing guard)
 agentctl list                    # skills and the agents that can see them
 
 agentctl install <path-or-git-url> [--name NAME] [--subpath skills] [--agent all]
@@ -312,6 +312,11 @@ The collaboration model incorporates proven patterns from open-source agent syst
    - **Atomic Task Lock Leases & Deadlock Release**: Upgrades checkout syntax with timestamps and lease TTLs (`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: ...]`), flagging expired leases as stale locks and enabling safe handoff takeovers;
    - **Topology Dual-Mode**: Supports both standard 4-Phase Hierarchical pipelines and lightweight Pair/Mesh mode (Claude Code as Navigator and Codex as Driver for high-intensity algorithm and driver sprints);
    - **Project Readiness Audit (`agentctl audit`)**: Scans project rules, blackboard status, deadlock risks, and command output safeguards to output a 0–100 readiness score.
+7. **Thread Pass-through, Inline/Spill Cache, and Speculative Execution (inspired by DeepSeek Super-agent Harness)**:
+   - **Thread Subscription & Direct Pass-through**: Binds tasks to `[SUBSCRIBED: <thread>]`, creating a Fast Path where follow-up compiler diagnostics and test output stream directly to the assigned Worker, skipping global re-reconnaissance and saving 30%~37% coordination tokens;
+   - **Inline & Spill Context Governance & Chain of Recall**: Treats LLM context as a cache; inlines high-locality IDs and summaries while spilling verbose logs/diffs to external files with reference pointers; entities link via short IDs (`inv-...`, `pat-...`), expanding step-by-step under token budgets;
+   - **Background Speculative Execution**: Silently attempts bug reproduction and minimal patch generation on scratch/speculative branches without holding global write locks; clean fixes with passing tests are promoted to formal PRs, while failures are silently discarded (0 noise);
+   - **Daemon-grade Semantic Watchdog (`agentctl audit --watch`)**: Runs continuous health audits, detecting when models thrash on identical files without passing tests, and automatically triggers `[SUSPENDED: THRASHING]` circuit breakers.
 
 ---
 

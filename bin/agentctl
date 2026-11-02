@@ -2295,6 +2295,38 @@ def check_session_blackboard(path: str) -> tuple[int, str, str, str]:
 
     has_topology = "topology" in content.lower() or "拓扑" in content
     has_integrity = "integrity" in content.lower() or "完整性" in content
+
+    # Chain of recall reference integrity check
+    declared_ids = set()
+    sec41_match = re.search(r"### 4\.1.*?\n(.*?)(?=\n### |\n## |\Z)", content, re.S)
+    if sec41_match:
+        for line in sec41_match.group(1).splitlines():
+            id_m = re.search(r"-\s*[`\"]?([a-z0-9_-]+)[`\"]?\s*:", line)
+            if id_m:
+                declared_ids.add(id_m.group(1))
+
+    threads = re.findall(r"\[SUBSCRIBED:\s*([^\]]+)\]", content)
+    declared_ids.update(t.strip() for t in threads)
+
+    ref_matches = re.findall(r'\|\s*`?([a-z0-9_-]+)`?\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|\n]+)\|', content)
+    for row in ref_matches:
+        node_id = row[0].strip('` ')
+        if node_id not in ("节点 ID", "---"):
+            declared_ids.add(node_id)
+
+    dangling = []
+    for row in ref_matches:
+        node_id = row[0].strip('` ')
+        if node_id in ("节点 ID", "---"):
+            continue
+        refs = [r.strip('` ') for r in row[4].split(',') if r.strip('` ')]
+        for r in refs:
+            if r and r not in declared_ids and not r.startswith("<") and "Chain Ref" not in r:
+                dangling.append(f"{node_id}->{r}")
+
+    if dangling:
+        return 18, "WARN", f"Found .agent/SESSION_STATE.md with dangling chain-of-recall references: {', '.join(dangling)}", session_file
+
     if has_topology and has_integrity:
         return 25, "PASS", "Found .agent/SESSION_STATE.md with Topology and Integrity Mode defined", session_file
     elif has_topology or has_integrity:
@@ -2302,14 +2334,62 @@ def check_session_blackboard(path: str) -> tuple[int, str, str, str]:
     return 15, "WARN", "Found .agent/SESSION_STATE.md but missing Topology or Integrity Mode declaration", session_file
 
 
-def check_task_locks(session_file: str) -> tuple[int, str, str, list[dict]]:
+def check_thrashing(path: str, session_file: str, all_locks: list[dict]) -> tuple[int, str, str, bool]:
+    """Detect runaway iteration or semantic thrashing (repeated commits on locked files without progress evidence)."""
     if not session_file or not os.path.isfile(session_file):
-        return 0, "FAIL", "Blackboard not present; cannot verify lock states", []
+        return 15, "PASS", "", False
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return 15, "PASS", "", False
+
+    # Check 1: Explicit thrashing suspended tag
+    if "[SUSPENDED: THRASHING]" in content:
+        return 0, "FAIL", "Blackboard marked [SUSPENDED: THRASHING] due to repeated test failures / thrashing", True
+
+    # Check 2: Runaway iteration counter e.g. 5 / 5
+    iter_match = re.search(r'迭代轮次[*_]*\s*[:：]\s*[*_]*\s*(\d+)\s*/\s*(\d+)', content)
+    if iter_match:
+        cur_iter = int(iter_match.group(1))
+        max_iter = int(iter_match.group(2))
+        if cur_iter >= max_iter:
+            return 0, "FAIL", f"Runaway iteration budget reached ({cur_iter}/{max_iter}); circuit breaker [SUSPENDED: ESCALATED]", True
+
+    # Check 3: Git churn on locked files without new Section 3 test evidence
+    locked_files = []
+    for lk in all_locks:
+        locked_files.extend(lk.get("files", []))
+    if locked_files and os.path.isdir(os.path.join(path, ".git")):
+        try:
+            cmd = ["git", "-C", path, "log", "-n", "5", "--oneline", "--"] + locked_files
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if proc.returncode == 0:
+                commits = proc.stdout.strip().splitlines()
+                if len(commits) >= 4:
+                    sec3_match = re.search(r'## 3\..*?\n(.*?)(?=\n## |\Z)', content, re.S)
+                    has_evidence = False
+                    if sec3_match:
+                        for line in sec3_match.group(1).splitlines():
+                            if "|" in line and not line.strip().startswith("| 时间") and not line.strip().startswith("| :-") and "<" not in line:
+                                has_evidence = True
+                                break
+                    if not has_evidence:
+                        return 0, "FAIL", f"Semantic thrashing detected: {len(commits)} commits on locked files with zero verified test evidence", True
+        except Exception:
+            pass
+
+    return 15, "PASS", "", False
+
+
+def check_task_locks(path: str, session_file: str) -> tuple[int, str, str, list[dict], bool]:
+    if not session_file or not os.path.isfile(session_file):
+        return 0, "FAIL", "Blackboard not present; cannot verify lock states", [], False
     try:
         with open(session_file, "r", encoding="utf-8") as f:
             content = f.read()
     except Exception as e:
-        return 0, "FAIL", f"Failed to read session blackboard: {e}", []
+        return 0, "FAIL", f"Failed to read session blackboard: {e}", [], False
 
     mtime = os.path.getmtime(session_file)
     now_ts = time.time()
@@ -2355,26 +2435,40 @@ def check_task_locks(session_file: str) -> tuple[int, str, str, list[dict]]:
                     is_stale = True
                     stale_reason = f"lock timestamp @ {hh}:{mm} expired ({int(diff_sec // 60)}m ago > TTL {int(ttl_sec // 60)}m)"
 
+            files_m = re.search(r'\[FILES:\s*([^\]]+)\]', line, re.I)
+            sub_m = re.search(r'\[SUBSCRIBED:\s*([^\]]+)\]', line, re.I)
+            locked_files = [f.strip() for f in files_m.group(1).split(",") if f.strip()] if files_m else []
+            sub_thread = sub_m.group(1).strip() if sub_m else None
+
             lock_info = {
                 "agent": agent,
                 "raw": match.group(0),
                 "ttl_sec": ttl_sec,
                 "stale": is_stale,
-                "reason": stale_reason
+                "reason": stale_reason,
+                "files": locked_files,
+                "subscribed": sub_thread,
             }
             all_locks.append(lock_info)
             if is_stale:
                 stale_locks.append(lock_info)
 
+    # Check for semantic thrashing / runaway iterations
+    thrash_score, thrash_status, thrash_details, is_thrashing = check_thrashing(path, session_file, all_locks)
+    if is_thrashing:
+        return 0, "FAIL", thrash_details, stale_locks, True
+
     if not all_locks:
-        return 15, "PASS", "No active task locks (blackboard clean)", []
+        return 15, "PASS", "No active task locks (blackboard clean)", [], False
     if not stale_locks:
-        return 15, "PASS", f"{len(all_locks)} active lock(s) with valid lease; no deadlock detected", []
+        sub_count = sum(1 for lk in all_locks if lk.get("subscribed"))
+        sub_note = f" (1 subscribed to direct thread: {next(lk['subscribed'] for lk in all_locks if lk.get('subscribed'))})" if sub_count == 1 else (f" ({sub_count} subscribed to direct threads)" if sub_count > 1 else "")
+        return 15, "PASS", f"{len(all_locks)} active lock(s) with valid lease{sub_note}; no deadlock detected", [], False
 
     deduction = len(stale_locks) * 10
     score = max(0, 15 - deduction)
     stale_agents = ", ".join(s["agent"] for s in stale_locks)
-    return score, "FAIL", f"Detected {len(stale_locks)} stale lock(s): {stale_agents}", stale_locks
+    return score, "FAIL", f"Detected {len(stale_locks)} stale lock(s): {stale_agents}", stale_locks, False
 
 
 def check_output_safeguards(agents_md_path: str) -> tuple[int, str, str]:
@@ -2433,19 +2527,15 @@ def check_memory_graph(path: str) -> tuple[int, str, str]:
     return 0, "WARN", "Shared knowledge graph (~/.agent-memory/knowledge-graph.jsonl) not found"
 
 
-def cmd_audit(args) -> int:
-    target_path = os.path.abspath(expand(args.path)) if getattr(args, "path", None) else os.getcwd()
-    if not os.path.isdir(target_path):
-        die(f"target path does not exist or is not a directory: {target_path}")
-
+def run_audit_once(target_path: str, args) -> int:
     # 1. AGENTS.md specification
     spec_score, spec_status, spec_details, spec_path = check_agents_spec(target_path)
 
     # 2. Session Blackboard State
     bb_score, bb_status, bb_details, bb_path = check_session_blackboard(target_path)
 
-    # 3. Task Locks & Deadlock
-    locks_score, locks_status, locks_details, stale_locks = check_task_locks(bb_path)
+    # 3. Task Locks, Thrashing & Deadlock
+    locks_score, locks_status, locks_details, stale_locks, is_thrashing = check_task_locks(target_path, bb_path)
 
     # 4. Output Safeguards
     safe_score, safe_status, safe_details = check_output_safeguards(spec_path)
@@ -2469,11 +2559,13 @@ def cmd_audit(args) -> int:
         status_label = "NOT_READY"
 
     recommendations = []
+    if is_thrashing:
+        recommendations.append("Halt execution: semantic thrashing / runaway iteration detected. Halt loop or escalate to human.")
     if spec_score < 25:
         recommendations.append("Run 'collab-init' or create AGENTS.md with project-specific build and test instructions.")
     if bb_score < 25:
         recommendations.append("Initialize multi-agent blackboard (.agent/SESSION_STATE.md) with Topology and Integrity Mode.")
-    if locks_score < 15:
+    if locks_score < 15 and not is_thrashing:
         recommendations.append("Release stale task locks with [RELEASED] or renew lease '@ HH:MM (TTL: <duration>)'.")
     if safe_score < 15:
         recommendations.append("Document output explosion safeguards (e.g. '| grep', '| head -n 30') in AGENTS.md.")
@@ -2485,7 +2577,7 @@ def cmd_audit(args) -> int:
     checks_dict = {
         "agents_spec": {"score": spec_score, "max": 25, "status": spec_status, "details": spec_details},
         "session_state": {"score": bb_score, "max": 25, "status": bb_status, "details": bb_details},
-        "task_locks": {"score": locks_score, "max": 15, "status": locks_status, "details": locks_details, "stale_locks": stale_locks},
+        "task_locks": {"score": locks_score, "max": 15, "status": locks_status, "details": locks_details, "stale_locks": stale_locks, "thrashing": is_thrashing},
         "output_safeguards": {"score": safe_score, "max": 15, "status": safe_status, "details": safe_details},
         "git_hygiene": {"score": git_score, "max": 10, "status": git_status, "details": git_details},
         "memory_graph": {"score": mem_score, "max": 10, "status": mem_status, "details": mem_details},
@@ -2534,6 +2626,26 @@ def cmd_audit(args) -> int:
     print("=" * 70)
 
     return 0 if total_score >= 70 else 1
+
+
+def cmd_audit(args) -> int:
+    target_path = os.path.abspath(expand(args.path)) if getattr(args, "path", None) else os.getcwd()
+    if not os.path.isdir(target_path):
+        die(f"target path does not exist or is not a directory: {target_path}")
+
+    watch_val = getattr(args, "watch", None)
+    if watch_val is not None:
+        interval = int(watch_val) if int(watch_val) > 0 else 30
+        print(f"[Watchdog] Starting continuous multi-agent audit on {target_path} (interval: {interval}s)...")
+        print("[Watchdog] Press Ctrl+C to stop.\n")
+        try:
+            while True:
+                run_audit_once(target_path, args)
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\n[Watchdog] Stopped.")
+            return 0
+    return run_audit_once(target_path, args)
 
 
 # ---------------------------------------------------------------- main
@@ -2592,6 +2704,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("audit", help="inspect project readiness for multi-agent orchestration")
     sp.add_argument("path", nargs="?", default=".", help="project path (default: .)")
     sp.add_argument("--json", action="store_true", help="output JSON")
+    sp.add_argument("--watch", nargs="?", const=30, type=int, help="continuous watchdog mode with interval seconds (default: 30s)")
     sp.set_defaults(func=cmd_audit)
 
     sp = sub.add_parser("lock", help="export portable lockfile into the repo")

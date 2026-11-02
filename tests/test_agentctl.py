@@ -610,6 +610,57 @@ print(json.dumps({{"ok": True}}))
         check_names = {"agents_spec", "session_state", "task_locks", "output_safeguards", "git_hygiene", "memory_graph"}
         self.assertEqual(set(data["checks"].keys()), check_names)
 
+    def test_audit_thrashing_detection(self) -> None:
+        proj = self.root / "thrashing-project"
+        proj.mkdir()
+        (proj / "AGENTS.md").write_text("pytest\n防爆安全带\n", encoding="utf-8")
+        (proj / ".agent").mkdir()
+        session_file = proj / ".agent" / "SESSION_STATE.md"
+        session_file.write_text(
+            "# Session State\n\n- **Topology**: hierarchical\n- **Integrity Mode**: development\n"
+            "- **协同迭代轮次**: 5 / 5\n"
+            "- [LOCKED: Codex] [FILES: src/main.py] Repeated failures\n",
+            encoding="utf-8",
+        )
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        self.assertEqual(data["checks"]["task_locks"]["status"], "FAIL")
+        self.assertTrue(data["checks"]["task_locks"]["thrashing"])
+        self.assertIn("Runaway iteration", data["checks"]["task_locks"]["details"])
+
+    def test_audit_subscribed_thread_pass(self) -> None:
+        proj = self.root / "subscribed-project"
+        proj.mkdir()
+        (proj / "AGENTS.md").write_text("pytest\n防爆安全带\n", encoding="utf-8")
+        (proj / ".agent").mkdir()
+        session_file = proj / ".agent" / "SESSION_STATE.md"
+        session_file.write_text(
+            "# Session State\n\nTopology: mesh\nIntegrity: demo\n\n"
+            "- [LOCKED: Codex @ 12:00 (TTL: 60m)] [FILES: src/can.py] [SUBSCRIBED: thread-fast-path] Protocol work\n",
+            encoding="utf-8",
+        )
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        self.assertEqual(data["checks"]["task_locks"]["status"], "PASS")
+        self.assertIn("thread-fast-path", data["checks"]["task_locks"]["details"])
+
+    def test_audit_chain_of_recall_integrity(self) -> None:
+        proj = self.root / "recall-project"
+        proj.mkdir()
+        (proj / "AGENTS.md").write_text("pytest\n防爆安全带\n", encoding="utf-8")
+        (proj / ".agent").mkdir()
+        session_file = proj / ".agent" / "SESSION_STATE.md"
+        session_file.write_text(
+            "# Session State\n\nTopology: hierarchical\nIntegrity: demo\n\n"
+            "### 4.1 Invariants\n- `inv-mem-01`: zero dynamic alloc\n\n"
+            "### 4.2 Reflections\n"
+            "| 节点 ID | Trigger | Gotcha | Invariant | Chain Ref |\n"
+            "| :--- | :--- | :--- | :--- | :--- |\n"
+            "| `pat-01` | High freq | Malloc jitter | Prealloc | `inv-missing-99` |\n",
+            encoding="utf-8",
+        )
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        self.assertEqual(data["checks"]["session_state"]["status"], "WARN")
+        self.assertIn("dangling chain-of-recall", data["checks"]["session_state"]["details"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,10 +30,10 @@ it to each agent as hardlinks, so no skill is duplicated on disk.
 ## Standard workflow
 
 ```bash
-agentctl status          # canonical size, per-agent link/copy counts
-agentctl doctor          # broken links, conflicts, duplicate copies
-agentctl audit [path]    # project multi-agent readiness audit (0-100 score, deadlock detection)
-agentctl list            # what exists and which agents have it
+agentctl status                 # canonical size, per-agent link/copy counts
+agentctl doctor                 # broken links, conflicts, duplicate copies
+agentctl audit [path] [--watch] # project multi-agent readiness audit & watchdog guard (0-100 score, thrashing guard)
+agentctl list                   # what exists and which agents have it
 ```
 
 Before any change, run `status` and `doctor` and report the current state.

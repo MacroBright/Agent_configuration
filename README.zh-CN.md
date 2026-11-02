@@ -156,7 +156,7 @@ cd ~/agent-config
 ```bash
 agentctl status                  # 规范副本数、链接数、重复项
 agentctl doctor                  # 断链、内容冲突、重复副本
-agentctl audit [path]            # 项目多 Agent 就绪度审计 (0~100 评分、死锁排查与安全带自检)
+agentctl audit [path] [--watch]  # 项目多 Agent 就绪度审计与 Watchdog 守护 (0~100 评分、死锁排查与拉锯熔断)
 agentctl list                    # 技能及各 Agent 可见状态
 
 agentctl install <path-or-git-url> [--name NAME] [--subpath skills] [--agent all]
@@ -308,6 +308,11 @@ agentctl plugin enable|disable <selector> --agent claude [--apply]
    - **工单原子锁租约与看门狗**：认领语法升级为带有时间戳与租约的 `- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: ...]`，超时未更新视为陈旧锁，支持强制释放，规避死锁；
    - **拓扑双模态**：支持分层流水线 (Hierarchical，默认) 与轻量双工结对互审 (Pair/Mesh，Claude Code 领航 + Codex 极速 TDD)；
    - **项目级准备度审计 (`agentctl audit`)**：一键自检项目规范、黑板状态机、陈旧任务锁与输出安全带，生成 0~100 准备度评分。
+7. **事件直通、Inline/Spill 缓存与投机执行 (源自 DeepSeek Super-agent Harness)**：
+   - **工单订阅与直通机制 (Thread Pass-through)**：基于作用域构建 Fast Path，工单认领绑定 `[SUBSCRIBED: <thread>]` 后，后续编译报错与测试反馈直通认领 Worker 处理，绕过全局重新扫描，节约 30%~37% 全局 Token；
+   - **Inline & Spill 缓存治理与链式召回 (Chain of Recall)**：把上下文窗口视为有限 Cache；高频时空局部数据直接 Inline，超长日志/Diff 强制 Spill 溢出至隔离区；图谱实体赋予短 ID（`inv-...`, `pat-...`），顺着引用关系逐跳展开检索；
+   - **后台投机执行 (Speculative Execution)**：针对跑红用例或对抗反例，允许在 `scratch/` 临时沙箱分支先行尝试复现与修复，单测绿灯才提升为正式工单呈递黑板，失败则静默丢弃（0 噪音）；
+   - **守护级语义 Watchdog (`agentctl audit --watch`)**：支持后台周期巡检，自动识别频繁修改但单测无法通过的“语义死循环/拉锯空转 (Thrashing)”，自动标记 `[SUSPENDED: THRASHING]` 触发熔断。
 
 ---
 

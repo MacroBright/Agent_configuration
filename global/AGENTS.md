@@ -29,6 +29,7 @@
 - **计算下沉与代码化思考 (Think in Code)**：
   - 将 LLM 视作代码生成器而非数据吞吐处理器 (*Program the analysis, not compute it*)。
   - 面向数据统计、依赖分析、AST 抽取、符号扫描与日志排查，严禁用原生读工具硬灌数十万字节；优先编写短小脚本（Python/Shell/Node.js）在本地执行过滤，仅将高度提炼的聚合统计送回上下文。
+- **上下文 Cache 治理 (Inline & Spill)**：将有限上下文窗口视作高速 Cache。高频且时空邻近信息（短 ID、关键摘要、直接关联）优先直接 Inline 内联；长日志、堆栈跟踪与全量 Diff 强制 Spill 溢出到隔离文件并保留链接引用。杜绝无节制长文本挤占窗口、稀释注意力。
 - **闭环验证原则**：改完、跑通、有确凿测试/编译证据，才算完成。
 - 保留用户意图，最小化无关改动。
 
@@ -131,10 +132,11 @@
 1. **Critic (代码规范审查员)**：评审代码风格、接口契约、Fowler 异味与模块内聚度；
 2. **Challenger (对抗性压力测试员)**：主动构造极端输入、最差复杂度反例、内存泄漏边界、CAN 丢包与超时故障，跑红用例才算及格；
 3. **Auditor (真实性审计员)**：严格审查单测与构建的真实终端命令输出，严禁任何形式的打桩伪造 (Anti-Mock)、空断言或跳过测试 (`skip`)；
-4. **Success Auditor (终验守门员)**：全项目交付前执行端到端全链路集成验证，全绿后方可呈递用户。
+4. **Success Auditor (终验守门员)**：全项目交付前执行端到端全链路集成验证，全绿后方可呈递用户；
+5. **Speculative Execution (后台投机执行)**：针对单测跑红、Challenger 极端反例或重构尝试，允许后台 Subagent 在专用沙箱分支（如 `scratch/speculative_<id>/`）先行尝试复现与修复，不持有全局排他写锁。复现成功且单测绿灯才升级为正式待验收工单呈递黑板；若失败或无实质价值则静默丢弃（0 噪音）。
 
 ### 14.3 排他性文件领空原则 (Exclusive File Ownership)
-1. **文件级原子绑定与租约看门狗**：Agent 原子签出子任务时必须在黑板标明独占文件与租约：`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] <任务描述>`；
+1. **文件级原子绑定、租约与订阅直通**：Agent 原子签出子任务时必须在黑板标明独占文件、租约及可选订阅作用域：`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [SUBSCRIBED: thread-can-protocol] <任务描述>`；
 2. **绝对互斥写原则**：同一时刻一个文件严禁被两个 Agent 同时修改，彻底消除 Git 冲突与脏写；
 3. **独立临时工作区**：辅助脚本与调试日志写入各自临时目录（如 `<appDataDir>/brain/<id>/scratch/`），严禁污染项目根目录。
 
@@ -155,11 +157,12 @@
    - `ephemeral` (暂态握手)：跨 Agent 临时握手信号与中间缓存，赋予 TTL（单轮任务结束后自动清理，绝不污染长期图谱）；
 2. **Retain (事实留存)**：仅将高阶架构实体、标定参数与通信协议 DBC 写入图谱；
 3. **Recall (有预算召回)**：单次图谱检索限制在 $\le 800$ tokens，优先召回 `invariants`，杜绝上下文污染；
-4. **Reflect (反思升华)**：排查出隐蔽缺陷或死锁后，强制以标准三段式升华写入黑板 Section 4 与图谱。
+4. **Reflect (反思升华)**：排查出隐蔽缺陷或死锁后，强制以标准三段式升华写入黑板 Section 4 与图谱；
+5. **链式召回 (Chain of Recall)**：图谱实体与反思记录统一赋予全局唯一短 ID（如 `inv-01`, `pat-02`），并在节点中内联直接关联的 ID 列表（`relates_to: ["inv-02", "thread-can"]`）。检索时顺着 ID 引用关系逐跳展开上下文，严格遵循 $\le 800$ tokens 预算，杜绝全量硬灌。
 
 ### 14.7 工单原子锁与 5 轮熔断安全带
-1. **工单原子签出状态机与租约防死锁**：子任务严格遵循 `[PENDING]` $\rightarrow$ `[LOCKED: <Agent> @ <Time> (TTL: <Duration>)] [FILES: ...]` $\rightarrow$ `[REVIEWING: <Agent>]` $\rightarrow$ `[COMPLETED]`；若持有锁的 Agent 异常中断或超时未刷新租约（超过 TTL 或默认 2 小时无更新），工单状态转为陈旧锁，接班 Agent 或人类可标记 `[RELEASED]` 强制接管，防止协同死锁；
-2. **5 轮熔断安全带**：黑板维护 `迭代轮次: N / 5` 计数器；若两 Agent 在单点修改上反复拉锯超过 5 轮，强制触发熔断挂起（`[SUSPENDED: ESCALATED]`），上报人类裁决。
+1. **工单原子签出状态机与订阅直通 (Thread Pass-through)**：子任务严格遵循 `[PENDING]` $\rightarrow$ `[LOCKED: <Agent> @ <Time> (TTL: <Duration>)] [FILES: ...] [SUBSCRIBED: <Thread>]` $\rightarrow$ `[REVIEWING: <Agent>]` $\rightarrow$ `[COMPLETED]`。同一 Thread 的后续编译器报错与测试执行反馈直接直通认领 Worker 处理（Fast Path），绕过全局重新扫描，节约 30%+ 协调 Token；超期未更新（超过 TTL 或默认 2 小时）由接班 Agent 或人类标记 `[RELEASED]` 接管；
+2. **5 轮熔断与循环拉锯安全带 (Thrashing Guard)**：黑板维护 `迭代轮次: N / 5` 计数器；若在同一组文件上反复修改但单测无法通过（Git commit 频繁拉锯且无实质测试进展），触发 `[SUSPENDED: THRASHING]` 熔断挂起，强制上报人类裁决。
 
 ### 14.8 自感知接力、手动调度与闭环汇报
 1. **自感知启动例程 (Zero-Prompt Perception)**：会话启动时静默检查 `.agent/SESSION_STATE.md`；若存在且指向本 Agent，首轮直接输出：`[Auto-Perceived] 检测到接力黑板：当前处于 Phase X (<阶段名称>)，接手执行...`，直接推进，禁止让用户重复粘贴提示词；
@@ -175,4 +178,4 @@
 1. **PreCompact 钩子与接力黑板抗失忆**：联动 Claude Code 的 `PreCompact` 钩子（工具 `collab-precompact` 软链至 `~/.local/bin/`），在会话压缩前夕自动将 Git 分支、脏文件列表与未结 Invariants 持久化写入黑板；
 2. **终端工位分屏与快照**：通过 `collab-tmux` 一键分配后台工位分屏，支持 `collab-tmux snapshot` 现场快照保存与原地恢复；
 3. **全链路上下文防爆**：全面遵循 Think in Code 原则（本地微脚本过滤统计结果送回）与命令输出防爆安全带（长日志管道截断）；
-4. **项目就绪度自检 (`agentctl audit`)**：支持执行 `agentctl audit [path]` 扫描当前项目规范、黑板状态机、陈旧死锁与输出安全带，生成 0~100 准备度评分。
+4. **项目就绪度自检与语义 Watchdog (`agentctl audit`)**：支持执行 `agentctl audit [path]`（或后台守护模式 `agentctl audit --watch [interval]`）巡检项目规范、黑板状态机、陈旧死锁、Git 拉锯与输出安全带，生成 0~100 准备度评分并在死锁/拉锯时预警。
