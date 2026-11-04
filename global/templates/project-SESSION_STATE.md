@@ -23,13 +23,24 @@
 ### 细分工单原子锁与排他文件领空 (Atomic Task Checkout & Exclusive File Ownership)
 > 规则：任务原子认领必须绑定独占文件领空 `[FILES: ...]`，任一文件同一时刻严禁被两个 Agent 同时修改。
 > 租约说明：支持指定认领时间戳与租约 TTL（如 `@ HH:MM (TTL: 30m)`），超期未更新视为死锁陈旧锁，接班 Agent 或人类可强制接管释放。
+> 调度原语 (Action Primitives)：
+> - `[ACTION: DISPATCH]`: 委派专职 Agent 处理独立子任务，执行完毕将结果汇总回传黑板，主控继续掌控全局；
+> - `[ACTION: HANDOFF]`: 彻底移交控制权与后续调度权给目标 Agent，当前 Agent 离场；
+> - `[ACTION: SPAWN_WORKER]`: 启动匿名隔离的临时子 Agent（无历史、无个性包袱），执行局部只读检索或暴力单测，彻底杜绝排查细节污染主会话上下文。
 > 订阅直通 (Fast Path)：支持绑定 `[SUBSCRIBED: <thread-id>]` 作用域。后续同一任务的构建报错、编译器日志与测试反馈直接直通认领 Worker，绕过全局重新扫描，节约 30%+ 协调 Token。
-- `[LOCKED: Codex @ 15:30 (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [SUBSCRIBED: thread-can-protocol]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定，直通订阅生效)
-- `[PENDING] [FILES: src/watchdog.cpp] [SUBSCRIBED: thread-watchdog]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
-- `[REVIEWING: Claude Code]` <子任务 3: 双轴规范审查与死锁检测> (待审查)
+- `[LOCKED: Codex @ 15:30 (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [ACTION: DISPATCH] [SUBSCRIBED: thread-can-protocol]` <子任务 1: 核心协议序列化与数据结构实现> (执行中，领空锁定，直通订阅生效)
+- `[PENDING] [FILES: src/watchdog.cpp] [ACTION: DISPATCH] [SUBSCRIBED: thread-watchdog]` <子任务 2: 看门狗状态机与异常恢复握手逻辑> (待认领)
+- `[REVIEWING: Claude Code] [ACTION: HANDOFF]` <子任务 3: 双轴规范审查与死锁检测> (待审查)
 - `[COMPLETED]` <子任务 0: 架构图与长程实体沉淀> (已归档)
 
 **当前进度**: <例如: Phase 3 进行中 (Codex 已完成子任务 1，待 Claude Code 审查)>
+
+### 工作区结构化状态快照 (Workspace State · 抗失忆表)
+> 核心机制：独立于对话历史的持久化工作区表格。即使会话发生 PreCompact 深度压缩，核心文件的手术刀坐标依然完整保留，唤醒后零开销对齐现场。
+| 文件路径 | 核心范围 / 符号 | 状态标记 | 关联验证命令 / 最近实证 |
+| :--- | :--- | :--- | :--- |
+| `src/can_bus.cpp` | L45-L120 (`serialize_frame`) | Modified | `pytest tests/test_can.py` (Pass 12/12) |
+| `include/can_bus.h` | L10-L40 (`CanFrame` struct) | Verified | 0 动态内存分配审计通过 |
 
 ## 3. 协作推进记录与实证 (Completed Work & Evidence)
 | 时间 | 执行 Agent | 完成内容 | 验证依据 (测试命令 / 构建结果) | Git Commit |
@@ -53,6 +64,11 @@
 ### 4.3 暂态交接与握手信号 (Ephemeral Namespace · TTL 300s，归档自动清理)
 - <例如: Codex 提交构建缓存至 /tmp/build_cache，请 Claude Code 审查单元测试覆盖率>
 <!-- 暂态空间用于跨 Agent 握手信号、临时迁移状态，本轮任务交付后丢弃，不污染长程图谱 -->
+
+### 4.4 通用元认知进化资产 (Metacognition Assets · 脏状态驱动)
+- **能力边界自校准 (`~/.codex/COMPETENCE.md`)**: <记录模型与外部工具在具体技术栈上的能力边界、易错点与擅长项>
+- **工程策略库 (`~/.codex/STRATEGIES.md`)**: <记录跨项目复用的高阶解题模式与工程策略>
+<!-- 仅在产生了实质新活动 (isAgentDirty) 且经过攻坚实测后更新，杜绝无意义空转反思 -->
 
 ## 5. 接力指令 (Handoff to Next Agent)
 - **接手 Agent 启动动作**: <明确写出下一个接班 Agent 启动后要执行的第一条命令或任务>

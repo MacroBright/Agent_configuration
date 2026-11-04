@@ -136,9 +136,13 @@
 5. **Speculative Execution (后台投机执行)**：针对单测跑红、Challenger 极端反例或重构尝试，允许后台 Subagent 在专用沙箱分支（如 `scratch/speculative_<id>/`）先行尝试复现与修复，不持有全局排他写锁。复现成功且单测绿灯才升级为正式待验收工单呈递黑板；若失败或无实质价值则静默丢弃（0 噪音）。
 
 ### 14.3 排他性文件领空原则 (Exclusive File Ownership)
-1. **文件级原子绑定、租约与订阅直通**：Agent 原子签出子任务时必须在黑板标明独占文件、租约及可选订阅作用域：`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [SUBSCRIBED: thread-can-protocol] <任务描述>`；
+1. **文件级原子绑定、租约与订阅直通**：Agent 原子签出子任务时必须在黑板标明独占文件、租约及可选订阅作用域：`- [LOCKED: Codex @ HH:MM (TTL: 30m)] [FILES: src/can_bus.cpp, include/can_bus.h] [ACTION: DISPATCH] [SUBSCRIBED: thread-can-protocol] <任务描述>`；
 2. **绝对互斥写原则**：同一时刻一个文件严禁被两个 Agent 同时修改，彻底消除 Git 冲突与脏写；
-3. **独立临时工作区**：辅助脚本与调试日志写入各自临时目录（如 `<appDataDir>/brain/<id>/scratch/`），严禁污染项目根目录。
+3. **独立临时工作区**：辅助脚本与调试日志写入各自临时目录（如 `<appDataDir>/brain/<id>/scratch/`），严禁污染项目根目录；
+4. **调度三原语 (Dispatch Primitives)**：细分子任务签发与流转必须显式标注调度意图：
+   - `[ACTION: DISPATCH]`：委派专职 Agent 处理独立子任务，执行完毕将结果汇总回传黑板，主控继续掌控全局；
+   - `[ACTION: HANDOFF]`：彻底移交控制权与后续调度权给目标 Agent，当前 Agent 离场；
+   - `[ACTION: SPAWN_WORKER]`：启动匿名隔离的临时子 Agent（无历史、无个性包袱），只执行局部沙箱任务，彻底杜绝排查细节污染主会话上下文。
 
 ### 14.4 工程完整性三模态 (Integrity Modes)
 - `development` (快速迭代)：允许复用第三方成熟框架，重在流程贯通；拦截伪造输出与空壳实现；
@@ -158,7 +162,10 @@
 2. **Retain (事实留存)**：仅将高阶架构实体、标定参数与通信协议 DBC 写入图谱；
 3. **Recall (有预算召回)**：单次图谱检索限制在 $\le 800$ tokens，优先召回 `invariants`，杜绝上下文污染；
 4. **Reflect (反思升华)**：排查出隐蔽缺陷或死锁后，强制以标准三段式升华写入黑板 Section 4 与图谱；
-5. **链式召回 (Chain of Recall)**：图谱实体与反思记录统一赋予全局唯一短 ID（如 `inv-01`, `pat-02`），并在节点中内联直接关联的 ID 列表（`relates_to: ["inv-02", "thread-can"]`）。检索时顺着 ID 引用关系逐跳展开上下文，严格遵循 $\le 800$ tokens 预算，杜绝全量硬灌。
+5. **链式召回 (Chain of Recall)**：图谱实体与反思记录统一赋予全局唯一短 ID（如 `inv-01`, `pat-02`），并在节点中内联直接关联的 ID 列表（`relates_to: ["inv-02", "thread-can"]`）。检索时顺着 ID 引用关系逐跳展开上下文，严格遵循 $\le 800$ tokens 预算，杜绝全量硬灌；
+6. **通用元认知进化资产 (Metacognition Assets)**：除了项目级 Invariants 外，每个 Agent 在产生实质新活动 (`isAgentDirty`) 且经实战攻坚后，提炼沉淀至两份跨项目核心资产：
+   - `~/.codex/COMPETENCE.md`：自我能力边界校准（记录当前模型/工具在特定语言与框架下的优势、已知短板与避坑策略）；
+   - `~/.codex/STRATEGIES.md`：通用工程解题策略库（记录跨项目复用的高阶算法、并发排错与系统架构解法）。
 
 ### 14.7 工单原子锁与 5 轮熔断安全带
 1. **工单原子签出状态机与订阅直通 (Thread Pass-through)**：子任务严格遵循 `[PENDING]` $\rightarrow$ `[LOCKED: <Agent> @ <Time> (TTL: <Duration>)] [FILES: ...] [SUBSCRIBED: <Thread>]` $\rightarrow$ `[REVIEWING: <Agent>]` $\rightarrow$ `[COMPLETED]`。同一 Thread 的后续编译器报错与测试执行反馈直接直通认领 Worker 处理（Fast Path），绕过全局重新扫描，节约 30%+ 协调 Token；超期未更新（超过 TTL 或默认 2 小时）由接班 Agent 或人类标记 `[RELEASED]` 接管；
@@ -175,7 +182,7 @@
 3. **显式激活脚手架**：默认单 Agent 纯净模式；仅当用户发出 `/collab-init`、`开启多 Agent 协作` 等显式指令并确认预审卡后，方可创建 `.agent/SESSION_STATE.md` 与项目 `AGENTS.md`。
 
 ### 14.10 上下文防御与终端编排
-1. **PreCompact 钩子与接力黑板抗失忆**：联动 Claude Code 的 `PreCompact` 钩子（工具 `collab-precompact` 软链至 `~/.local/bin/`），在会话压缩前夕自动将 Git 分支、脏文件列表与未结 Invariants 持久化写入黑板；
+1. **PreCompact 钩子与结构化 Workspace State 固化**：联动 Claude Code 的 `PreCompact` 钩子（工具 `collab-precompact` 软链至 `~/.local/bin/`），在会话压缩前夕自动将 Git 分支、Diff 统计、脏文件与核心手术代码行范围作为结构化 `Workspace State` 表格写入黑板，实现压缩后瞬时精准恢复，杜绝全库重新扫描；
 2. **终端工位分屏与快照**：通过 `collab-tmux` 一键分配后台工位分屏，支持 `collab-tmux snapshot` 现场快照保存与原地恢复；
 3. **全链路上下文防爆**：全面遵循 Think in Code 原则（本地微脚本过滤统计结果送回）与命令输出防爆安全带（长日志管道截断）；
 4. **项目就绪度自检与语义 Watchdog (`agentctl audit`)**：支持执行 `agentctl audit [path]`（或后台守护模式 `agentctl audit --watch [interval]`）巡检项目规范、黑板状态机、陈旧死锁、Git 拉锯与输出安全带，生成 0~100 准备度评分并在死锁/拉锯时预警。

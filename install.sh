@@ -45,9 +45,13 @@ if [ -d "${HOME_DIR}/.codex" ]; then
   cp "$REPO_DIR/global/templates/project-AGENTS.md" "${HOME_DIR}/.codex/context/templates/project-AGENTS.md"
   cp "$REPO_DIR/global/templates/robotics-AGENTS.md" "${HOME_DIR}/.codex/context/templates/robotics-AGENTS.md"
   cp "$REPO_DIR/global/templates/project-SESSION_STATE.md" "${HOME_DIR}/.codex/context/templates/project-SESSION_STATE.md"
+  cp "$REPO_DIR/global/templates/COMPETENCE.md.template" "${HOME_DIR}/.codex/context/templates/COMPETENCE.md.template"
+  cp "$REPO_DIR/global/templates/STRATEGIES.md.template" "${HOME_DIR}/.codex/context/templates/STRATEGIES.md.template"
+  [ ! -f "${HOME_DIR}/.codex/COMPETENCE.md" ] && cp "$REPO_DIR/global/templates/COMPETENCE.md.template" "${HOME_DIR}/.codex/COMPETENCE.md"
+  [ ! -f "${HOME_DIR}/.codex/STRATEGIES.md" ] && cp "$REPO_DIR/global/templates/STRATEGIES.md.template" "${HOME_DIR}/.codex/STRATEGIES.md"
   mkdir -p "${HOME_DIR}/.agent-memory"
   touch "${HOME_DIR}/.agent-memory/knowledge-graph.jsonl"
-  say "已写入通用与机器人领域项目级模板"
+  say "已写入通用与机器人领域项目级模板与元认知资产"
 
   # 协作 CLI 工具软链至 ~/.local/bin
   mkdir -p "${HOME_DIR}/.local/bin"

@@ -1,0 +1,16 @@
+# Reusable Engineering Strategies & Heuristics (通用工程解题策略库)
+
+> 记录跨项目复用的高阶解题模式、排障套路与系统设计方法。
+> 门禁原则：从具体踩坑经验升华而来，供跨会话、跨任务沉淀与查阅。
+
+## 1. 调试与排错策略 (Systematic Debugging)
+- **复现优先于假设**: 未经测试用例跑红之前绝不盲目试错改动源码；
+- **二分排查与隔离**: 复杂死锁或状态污染优先使用 `run_worker` 隔离子环境或最小单元测试复现。
+
+## 2. 性能与资源控制策略 (Resource & Token Efficiency)
+- **计算下沉 (Think in Code)**: 编写本地微脚本执行过滤，只将高度提炼的聚合统计回传上下文；
+- **上下文 Cache 治理 (Inline & Spill)**: 高频相邻 ID 与摘要内联，超长 Diff 溢出保存，顺着引用关系链式召回。
+
+## 3. 协作与并发策略 (Multi-Agent Coordination)
+- **排他领空互斥写**: 任务认领严格绑定独占文件领空 `[FILES: ...]`，彻底杜绝 Git 冲突与脏写；
+- **订阅直通加速**: 绑定 `[SUBSCRIBED: <thread>]` 后，编译报错直通认领 Worker 处理，绕过全局重新扫描。

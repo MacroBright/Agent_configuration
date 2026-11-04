@@ -317,6 +317,10 @@ The collaboration model incorporates proven patterns from open-source agent syst
    - **Inline & Spill Context Governance & Chain of Recall**: Treats LLM context as a cache; inlines high-locality IDs and summaries while spilling verbose logs/diffs to external files with reference pointers; entities link via short IDs (`inv-...`, `pat-...`), expanding step-by-step under token budgets;
    - **Background Speculative Execution**: Silently attempts bug reproduction and minimal patch generation on scratch/speculative branches without holding global write locks; clean fixes with passing tests are promoted to formal PRs, while failures are silently discarded (0 noise);
    - **Daemon-grade Semantic Watchdog (`agentctl audit --watch`)**: Runs continuous health audits, detecting when models thrash on identical files without passing tests, and automatically triggers `[SUSPENDED: THRASHING]` circuit breakers.
+8. **Dispatch Action Primitives, Metacognition Assets & Workspace State Persistence (inspired by Orkas)**:
+   - **Task Dispatch Action Primitives**: Explicitly tags task handoffs with atomic action semantics: `[ACTION: DISPATCH]` (hierarchical child delegation expecting synthesized return), `[ACTION: HANDOFF]` (full turn-level authority transfer with context cutover), and `[ACTION: SPAWN_WORKER]` (isolated scratch execution without baggage), eliminating ambiguous coordination roles;
+   - **Metacognition Evolution Assets (`COMPETENCE.md` & `STRATEGIES.md`)**: Replaces static system prompts with activity-driven (`isAgentDirty` + cooldown) self-evolution assets. Agents periodically consolidate newly demonstrated domain competencies, verified tool skills, and meta-learning strategies into repository and user-level profile documents;
+   - **Structured Workspace State Persistence**: Persists environmental invariants (`ROS_DOMAIN_ID`, device URDFs, simulator ports, active build flags) into a structured markdown table within `.agent/SESSION_STATE.md` and pre-compaction hooks, preserving vital workspace coordinates across aggressive context compression.
 
 ---
 

@@ -25,6 +25,7 @@ TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
 LAST_COMMIT="$(git log -n 1 --oneline 2>/dev/null || echo "none")"
 DIRTY_FILES="$(git status -s 2>/dev/null | head -n 15 || echo "clean")"
+DIFF_STAT="$(git diff --stat 2>/dev/null | tail -n 10 || echo "no uncommitted changes")"
 
 # 2. 如果存在快照标记，则更新或追加 [PreCompact 实时快照] 区块
 SNAPSHOT_HEADER="<!-- PRECOMPACT_SNAPSHOT_START -->"
@@ -33,8 +34,13 @@ SNAPSHOT_FOOTER="<!-- PRECOMPACT_SNAPSHOT_END -->"
 SNAPSHOT_BLOCK="${SNAPSHOT_HEADER}
 ### 🔄 PreCompact 压缩前夕现场快照 ($TIMESTAMP)
 > [!NOTE]
-> 本区块由 PreCompact 钩子自动生成。会话压缩后，Agent 应首先依据此快照对齐工作现场。
+> 本区块由 PreCompact 钩子自动生成（融合 Orkas Workspace State 思想）。
+> 会话压缩后，Agent 应直接依据此工作区状态对齐手术现场，杜绝全库重新扫描。
 - **分支状态**: \`$BRANCH\` | **最近提交**: \`$LAST_COMMIT\`
+- **工作区变更概要 (Diff Stat)**:
+\`\`\`text
+$DIFF_STAT
+\`\`\`
 - **工作区脏文件 (Top 15)**:
 \`\`\`text
 $DIRTY_FILES

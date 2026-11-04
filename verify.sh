@@ -13,6 +13,7 @@ if [ -n "$HITS" ]; then echo "!! 发现疑似密钥："; echo "$HITS"; FAIL=1; e
 echo ""
 echo "===== 2) 仓库完整性 ====="
 for f in global/AGENTS.md global/USER_CONTEXT.md.template global/templates/project-AGENTS.md global/templates/robotics-AGENTS.md global/templates/project-SESSION_STATE.md \
+         global/templates/COMPETENCE.md.template global/templates/STRATEGIES.md.template \
          skills/manifest.yaml skills/curated.txt \
          per-agent/codex.config.toml.template per-agent/claude.settings.json.template per-agent/claude.mcp.json.template per-agent/opencode.jsonc.template per-agent/antigravity.mcp_config.json.template \
          scripts/collab-init.sh scripts/collab-tmux.sh scripts/collab-precompact.sh \

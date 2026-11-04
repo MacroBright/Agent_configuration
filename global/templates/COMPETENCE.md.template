@@ -1,0 +1,17 @@
+# Agent Competence & Boundary Calibration (能力与边界自校准)
+
+> 记录模型与工具在具体语言、框架和任务场景下的已知优势、能力边界与避坑准则。
+> 门禁原则：仅在产生了实质新活动 (isAgentDirty) 且经过攻坚实测后更新。
+
+## 1. 强项与高置信度领域 (Verified Strengths)
+- **C++ (Google Style & RAII)**: 头文件依赖解耦、智能指针生命周期、零动态内存实时控制循环。
+- **Python (PEP 8 & pytest)**: 原生 assert 自省、Fixture 隔离、类型注解与流式数据处理。
+- **并发与架构排查**: 死锁检测、状态机设计、排他锁原子认领与租约看门狗。
+
+## 2. 已知短板与能力边界 (Known Limitations & Blind Spots)
+- **C++ 深度模板元编程 (TMP)**: 面对极端复杂的模板类型推导时容易陷入长推导循环，建议拆解为特化或 concepts 约束。
+- **长日志全量阅读**: 面对百万字节级别的构建/测试长日志容易丢失注意力，强制使用 Think in Code 本地短脚本过滤或管道截断 (`| grep`)。
+
+## 3. 专属避坑准则 (Specific Anti-Patterns)
+- 严禁在实时控制循环中分配动态内存 (0 new/malloc)；
+- 严禁生成未经终端真实运行检验的假测试与打桩空断言 (Anti-Mock)。

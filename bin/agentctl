@@ -2328,7 +2328,8 @@ def check_session_blackboard(path: str) -> tuple[int, str, str, str]:
         return 18, "WARN", f"Found .agent/SESSION_STATE.md with dangling chain-of-recall references: {', '.join(dangling)}", session_file
 
     if has_topology and has_integrity:
-        return 25, "PASS", "Found .agent/SESSION_STATE.md with Topology and Integrity Mode defined", session_file
+        ws_note = ", and Workspace State defined" if ("workspace state" in content.lower() or "工作区" in content) else " defined"
+        return 25, "PASS", f"Found .agent/SESSION_STATE.md with Topology and Integrity Mode{ws_note}", session_file
     elif has_topology or has_integrity:
         return 20, "PASS", "Found .agent/SESSION_STATE.md with partial Mode definitions", session_file
     return 15, "WARN", "Found .agent/SESSION_STATE.md but missing Topology or Integrity Mode declaration", session_file
@@ -2437,8 +2438,10 @@ def check_task_locks(path: str, session_file: str) -> tuple[int, str, str, list[
 
             files_m = re.search(r'\[FILES:\s*([^\]]+)\]', line, re.I)
             sub_m = re.search(r'\[SUBSCRIBED:\s*([^\]]+)\]', line, re.I)
+            act_m = re.search(r'\[ACTION:\s*([^\]]+)\]', line, re.I)
             locked_files = [f.strip() for f in files_m.group(1).split(",") if f.strip()] if files_m else []
             sub_thread = sub_m.group(1).strip() if sub_m else None
+            action_type = act_m.group(1).strip().upper() if act_m else None
 
             lock_info = {
                 "agent": agent,
@@ -2448,6 +2451,7 @@ def check_task_locks(path: str, session_file: str) -> tuple[int, str, str, list[
                 "reason": stale_reason,
                 "files": locked_files,
                 "subscribed": sub_thread,
+                "action": action_type,
             }
             all_locks.append(lock_info)
             if is_stale:
@@ -2462,8 +2466,10 @@ def check_task_locks(path: str, session_file: str) -> tuple[int, str, str, list[
         return 15, "PASS", "No active task locks (blackboard clean)", [], False
     if not stale_locks:
         sub_count = sum(1 for lk in all_locks if lk.get("subscribed"))
+        act_types = [lk["action"] for lk in all_locks if lk.get("action")]
         sub_note = f" (1 subscribed to direct thread: {next(lk['subscribed'] for lk in all_locks if lk.get('subscribed'))})" if sub_count == 1 else (f" ({sub_count} subscribed to direct threads)" if sub_count > 1 else "")
-        return 15, "PASS", f"{len(all_locks)} active lock(s) with valid lease{sub_note}; no deadlock detected", [], False
+        act_note = f" [{', '.join(act_types)}]" if act_types else ""
+        return 15, "PASS", f"{len(all_locks)} active lock(s) with valid lease{act_note}{sub_note}; no deadlock detected", [], False
 
     deduction = len(stale_locks) * 10
     score = max(0, 15 - deduction)
@@ -2521,9 +2527,20 @@ def check_memory_graph(path: str) -> tuple[int, str, str]:
         os.path.join(path, ".agent-memory", "knowledge-graph.jsonl"),
         os.path.join(HOME, ".agent-memory", "knowledge-graph.jsonl"),
     ]
+    meta_candidates = [
+        os.path.join(path, ".agent", "COMPETENCE.md"),
+        os.path.join(path, "COMPETENCE.md"),
+        os.path.join(HOME, ".codex", "COMPETENCE.md"),
+    ]
+    has_meta = any(os.path.isfile(m) for m in meta_candidates)
+
     for c in candidates:
         if os.path.isfile(c):
-            return 10, "PASS", f"Shared knowledge graph found ({os.path.basename(c)})"
+            meta_note = " + Metacognition assets" if has_meta else ""
+            return 10, "PASS", f"Shared knowledge graph found ({os.path.basename(c)}){meta_note}"
+
+    if has_meta:
+        return 5, "WARN", "Metacognition assets found, but knowledge-graph.jsonl missing"
     return 0, "WARN", "Shared knowledge graph (~/.agent-memory/knowledge-graph.jsonl) not found"
 
 

@@ -36,6 +36,13 @@ agentctl audit [path] [--watch] # project multi-agent readiness audit & watchdog
 agentctl list                   # what exists and which agents have it
 ```
 
+`agentctl audit` validates collaboration readiness:
+- Verifies `AGENTS.md` build/test specifications and output safeguards (`| grep`, `| head`).
+- Checks `.agent/SESSION_STATE.md` topology, integrity modes, and structured **Workspace State Snapshot**.
+- Tracks task locks, lease TTLs, direct thread subscriptions (`[SUBSCRIBED: <thread>]`), and dispatch action primitives (`[ACTION: DISPATCH/HANDOFF/SPAWN_WORKER]`).
+- Detects stale locks, runaway iterations, and semantic thrashing loop conditions (`--watch`).
+- Audits shared knowledge graph and **Metacognition evolution assets** (`COMPETENCE.md` / `STRATEGIES.md`).
+
 Before any change, run `status` and `doctor` and report the current state.
 
 ### Install

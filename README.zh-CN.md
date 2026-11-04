@@ -313,6 +313,10 @@ agentctl plugin enable|disable <selector> --agent claude [--apply]
    - **Inline & Spill 缓存治理与链式召回 (Chain of Recall)**：把上下文窗口视为有限 Cache；高频时空局部数据直接 Inline，超长日志/Diff 强制 Spill 溢出至隔离区；图谱实体赋予短 ID（`inv-...`, `pat-...`），顺着引用关系逐跳展开检索；
    - **后台投机执行 (Speculative Execution)**：针对跑红用例或对抗反例，允许在 `scratch/` 临时沙箱分支先行尝试复现与修复，单测绿灯才提升为正式工单呈递黑板，失败则静默丢弃（0 噪音）；
    - **守护级语义 Watchdog (`agentctl audit --watch`)**：支持后台周期巡检，自动识别频繁修改但单测无法通过的“语义死循环/拉锯空转 (Thrashing)”，自动标记 `[SUSPENDED: THRASHING]` 触发熔断。
+8. **调度三原语、元认知自进化资产与工作区状态抗失忆 (源自 Orkas)**：
+   - **任务调度三原语 (Action Primitives)**：显式规范工单签发语义：`[ACTION: DISPATCH]`（分层子任务委派，期待产出回传并保持原 Agent 会话主导权）、`[ACTION: HANDOFF]`（会话主导权完全移交，切换主控 Agent 并触发上下文截断）与 `[ACTION: SPAWN_WORKER]`（派生独立沙箱匿名 Worker，无历史上下文负担执行特定纯函数计算），消除多 Agent 协作中的角色与权限模糊；
+   - **元认知自进化资产 (`COMPETENCE.md` & `STRATEGIES.md`)**：告别静态 Prompt 限制，引入基于 Agent 活动判定（`isAgentDirty` + 冷却时间）的动态元认知升华机制。在项目及用户级持久化已验证的技术能力画像与元学习策略，形成越用越聪明、懂用户偏好的自我进化循环；
+   - **工作区结构化状态快照 (Workspace State Persistence)**：在 `.agent/SESSION_STATE.md` 与 PreCompact 钩子中增加强结构化的关键环境变量与运行时坐标表（如 `ROS_DOMAIN_ID`、驱动端口、机器人 URDF 配置等），在上下文极端压缩与接力场景下保持环境状态不丢失。
 
 ---
 

@@ -661,6 +661,34 @@ print(json.dumps({{"ok": True}}))
         self.assertEqual(data["checks"]["session_state"]["status"], "WARN")
         self.assertIn("dangling chain-of-recall", data["checks"]["session_state"]["details"])
 
+    def test_audit_dispatch_action_primitives_and_workspace_state(self) -> None:
+        proj = self.root / "dispatch-project"
+        proj.mkdir()
+        (proj / "AGENTS.md").write_text("pytest\n防爆安全带\n", encoding="utf-8")
+        (proj / ".agent").mkdir()
+        (proj / ".agent" / "COMPETENCE.md").write_text("# Competence\n- Domain: CAN Bus\n", encoding="utf-8")
+        (proj / ".agent" / "knowledge-graph.jsonl").write_text('{"id": "inv-01", "type": "invariant"}\n', encoding="utf-8")
+        session_file = proj / ".agent" / "SESSION_STATE.md"
+        session_file.write_text(
+            "# Session State\n\n- **Topology**: hierarchical\n- **Integrity Mode**: development\n\n"
+            "### 工作区结构化状态快照 (Workspace State Snapshot)\n"
+            "| 环境变量/关键路径 | 当前配置值 | 状态与验证证据 |\n"
+            "| :--- | :--- | :--- |\n"
+            "| `ROS_DOMAIN_ID` | `42` | [VERIFIED] |\n\n"
+            "### 2. 子任务看板 (Subtask Board)\n"
+            "- [LOCKED: Claude @ 12:00 (TTL: 60m)] [FILES: src/router.py] [ACTION: DISPATCH] Route CAN msgs\n"
+            "- [LOCKED: Codex @ 12:05 (TTL: 60m)] [FILES: src/can.py] [ACTION: HANDOFF] Low level driver\n",
+            encoding="utf-8",
+        )
+        data = json.loads(self.run_cli("audit", str(proj), "--json", check=False).stdout)
+        self.assertEqual(data["checks"]["session_state"]["status"], "PASS")
+        self.assertIn("Workspace State defined", data["checks"]["session_state"]["details"])
+        self.assertEqual(data["checks"]["task_locks"]["status"], "PASS")
+        self.assertIn("DISPATCH", data["checks"]["task_locks"]["details"])
+        self.assertIn("HANDOFF", data["checks"]["task_locks"]["details"])
+        self.assertEqual(data["checks"]["memory_graph"]["status"], "PASS")
+        self.assertIn("Metacognition assets", data["checks"]["memory_graph"]["details"])
+
 
 if __name__ == "__main__":
     unittest.main()
